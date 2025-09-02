@@ -1,0 +1,103 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+
+enum PayType {
+  ADVANCE
+  SALARY
+  OVERTIME
+  DEDUCTION
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+
+model Admin {
+  id       Int       @id @default(autoincrement())
+  name     String
+  phone    String    @unique
+  email    String    @unique
+  password String
+}
+
+model Office {
+  id        Int        @id @default(autoincrement())
+  latitude  Float
+  longitude Float
+  checkin   DateTime
+  checkout  DateTime
+}
+
+model Holiday {
+  id          Int      @id @default(autoincrement())
+  description String
+  date        DateTime
+}
+
+model Employee {
+  id           Int           @id @default(autoincrement())
+  name         String
+  phone        String        @unique
+  email        String        @unique
+  password     String
+  baseSalary   Int
+  overtimeRate Int
+  leaveBalance Int           @default(10)   // initial balance, will decrease as leaves are approved
+  officeId     Int
+  adminId      Int
+  office       Office @relation(fields: [officeId], references: [id])
+  admin        Admin  @relation(fields: [adminId], references: [id])
+  leaves       Leave[]
+  attendances  Attendance[]
+  transactions Transaction[]
+}
+
+
+model Leave {
+  id        Int          @id @default(autoincrement())
+  empId     Int
+  reason    String
+  applyDate DateTime     @default(now())
+  fromDate  DateTime
+  toDate    DateTime
+  totalDays Int
+  status    LeaveStatus  @default(PENDING)
+  employee  Employee     @relation(fields: [empId], references: [id])
+}
+
+model Attendance {
+  id          Int       @id @default(autoincrement())
+  empId       Int
+  date        DateTime
+  checkInTime DateTime
+  checkOutTime DateTime
+  overTime     Int
+  employee     Employee  @relation(fields: [empId], references: [id])
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  empId       Int
+  amount      Int
+  date        DateTime
+  payType     PayType
+  description String?
+  employee    Employee @relation(fields: [empId], references: [id])
+}
