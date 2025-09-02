@@ -35,6 +35,7 @@ model Admin {
   phone    String    @unique
   email    String    @unique
   password String
+  employees Employee[]
 }
 
 model Office {
@@ -43,6 +44,7 @@ model Office {
   longitude Float
   checkin   DateTime
   checkout  DateTime
+  employees Employee[]
 }
 
 model Holiday {
