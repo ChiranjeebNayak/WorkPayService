@@ -32,6 +32,15 @@ enum LeaveType {
   UNPAID
 }
 
+enum attendanceStatus {
+  PRESENT
+  ABSENT
+  LATE 
+  LEAVE 
+  WEEKOFF 
+  HOLIDAY
+}
+
 
 model Admin {
   id       Int       @id @default(autoincrement())
@@ -90,14 +99,16 @@ model Leave {
 }
 
 model Attendance {
-  id          Int       @id @default(autoincrement())
-  empId       Int
-  date        DateTime
-  checkInTime DateTime
-  checkOutTime DateTime
+  id           Int       @id @default(autoincrement())
+  empId        Int
+  date         DateTime
+  checkInTime  DateTime?   // nullable
+  checkOutTime DateTime?   // nullable
   overTime     Int
-  employee     Employee  @relation(fields: [empId], references: [id])
+  status       attendanceStatus
+  employee     Employee    @relation(fields: [empId], references: [id])
 }
+
 
 model Transaction {
   id          Int      @id @default(autoincrement())

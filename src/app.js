@@ -3,6 +3,7 @@ import cors from "cors";
 import adminRoutes from "./routes/adminRoutes.js";
 import officeRoutes from "./routes/officeRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js";
+import attendanceRoutes from "./routes/attendanceRoute.js";
 
 const app = express();
 
@@ -16,5 +17,6 @@ app.get("/",(req,res)=>{
 app.use("/api/admins", adminRoutes);
 app.use("/api/offices", officeRoutes);
 app.use("/api/employees", employeeRoutes);
+app.use("/api/attendances", attendanceRoutes);
 
 export default app;
