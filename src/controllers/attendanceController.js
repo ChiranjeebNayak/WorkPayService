@@ -154,3 +154,79 @@ export const getEmployeeAttendanceByMonth = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch employee attendance" });
   }
 };
+
+
+
+
+
+// ✅ Dashboard Attendance API
+export const getTodayAttendanceDashboard = async (req, res) => {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(todayStart.getDate() + 1);
+
+    // ---- Total Employees ----
+    const totalEmployees = await prisma.employee.count();
+
+    // ---- Attendance Today (group by status) ----
+    const attendanceToday = await prisma.attendance.groupBy({
+      by: ["status"],
+      where: {
+        date: {
+          gte: todayStart,
+          lt: tomorrowStart,
+        },
+      },
+      _count: {
+        status: true,
+      },
+    });
+
+    // convert groupBy result into {status: count}
+    const counts = attendanceToday.reduce((acc, row) => {
+      acc[row.status] = row._count.status;
+      return acc;
+    }, {});
+
+    const totalLate = counts["LATE"] || 0;
+    const totalPresent = counts["PRESENT"] || 0;
+    const totalAbsent = counts["ABSENT"] || 0;
+
+    // ---- Absent Employees List ----
+    const absentees = await prisma.attendance.findMany({
+      where: {
+        status: "LATE",
+        date: {
+          gte: todayStart,
+          lt: tomorrowStart,
+        },
+      },
+      select: {
+        employee: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    const absentList = absentees.map(a => ({
+      id: a.employee.id,
+      name: a.employee.name,
+    }));
+
+    // ---- Final Response ----
+    res.json({
+      date: todayStart.toLocaleDateString("en-CA"),
+      totalEmployees,
+      totalLate,
+      totalPresent,
+      totalAbsent,
+      absentList,
+    });
+  } catch (error) {
+    console.error("Error fetching dashboard attendance:", error);
+    res.status(500).json({ error: "Failed to fetch dashboard attendance" });
+  }
+};
+
