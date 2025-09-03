@@ -4,6 +4,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import officeRoutes from "./routes/officeRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js";
 import attendanceRoutes from "./routes/attendanceRoute.js";
+import leaveRoutes from "./routes/leaveRoutes.js";
 
 const app = express();
 
@@ -18,5 +19,6 @@ app.use("/api/admins", adminRoutes);
 app.use("/api/offices", officeRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/attendances", attendanceRoutes);
+app.use("/api/leaves", leaveRoutes);
 
 export default app;
