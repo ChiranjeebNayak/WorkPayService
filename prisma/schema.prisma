@@ -27,6 +27,11 @@ enum LeaveStatus {
   REJECTED
 }
 
+enum LeaveType {
+  PAID
+  UNPAID
+}
+
 
 model Admin {
   id       Int       @id @default(autoincrement())
@@ -79,6 +84,7 @@ model Leave {
   fromDate  DateTime
   toDate    DateTime
   totalDays Int
+  type      LeaveType    
   status    LeaveStatus  @default(PENDING)
   employee  Employee     @relation(fields: [empId], references: [id])
 }
