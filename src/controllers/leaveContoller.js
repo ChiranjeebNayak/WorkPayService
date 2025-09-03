@@ -1,12 +1,14 @@
 import prisma from "../prisma.js";
 
-// ✅ Apply Leave API
+// ✅ Apply Leave API (No leave balance update here)
 export const applyLeave = async (req, res) => {
   try {
     const { empId, reason, startDate, endDate } = req.body;
 
     if (!empId || !reason || !startDate || !endDate) {
-      return res.status(400).json({ error: "empId, reason, startDate, endDate are required" });
+      return res
+        .status(400)
+        .json({ error: "empId, reason, startDate, endDate are required" });
     }
 
     const fromDate = new Date(startDate);
@@ -29,7 +31,7 @@ export const applyLeave = async (req, res) => {
     let leaveApplications = [];
 
     if (employee.leaveBalance <= 0) {
-      // 🔹 No balance → fully unpaid leave
+      // 🔹 Fully unpaid leave
       const leave = await prisma.leave.create({
         data: {
           empId: Number(empId),
@@ -37,12 +39,12 @@ export const applyLeave = async (req, res) => {
           fromDate,
           toDate,
           totalDays,
-          type: "UNPAID", // assuming LeaveType has PAID/UNPAID
+          type: "UNPAID",
         },
       });
       leaveApplications.push(leave);
     } else if (employee.leaveBalance >= totalDays) {
-      // 🔹 Enough balance → fully paid leave
+      // 🔹 Fully paid leave
       const leave = await prisma.leave.create({
         data: {
           empId: Number(empId),
@@ -54,24 +56,20 @@ export const applyLeave = async (req, res) => {
         },
       });
       leaveApplications.push(leave);
-
-      // deduct balance
-      await prisma.employee.update({
-        where: { id: Number(empId) },
-        data: { leaveBalance: employee.leaveBalance - totalDays },
-      });
     } else {
       // 🔹 Partial: split into PAID + UNPAID
       const paidDays = employee.leaveBalance;
       const unpaidDays = totalDays - paidDays;
 
-      const paidToDate = new Date(fromDate);
+      // Paid leave ends on this date
+      const paidToDate = new Date(fromDate.getTime());
       paidToDate.setDate(fromDate.getDate() + paidDays - 1);
 
-      const unpaidFromDate = new Date(paidToDate);
-      unpaidFromDate.setDate(paidToDate.getDate() + 1);
+      // Unpaid leave starts next day
+      const unpaidFromDate = new Date(paidToDate.getTime());
+      unpaidFromDate.setDate(unpaidFromDate.getDate() + 1);
 
-      // create PAID leave
+      // Create PAID leave
       const paidLeave = await prisma.leave.create({
         data: {
           empId: Number(empId),
@@ -83,7 +81,7 @@ export const applyLeave = async (req, res) => {
         },
       });
 
-      // create UNPAID leave
+      // Create UNPAID leave
       const unpaidLeave = await prisma.leave.create({
         data: {
           empId: Number(empId),
@@ -96,12 +94,6 @@ export const applyLeave = async (req, res) => {
       });
 
       leaveApplications.push(paidLeave, unpaidLeave);
-
-      // set balance to 0
-      await prisma.employee.update({
-        where: { id: Number(empId) },
-        data: { leaveBalance: 0 },
-      });
     }
 
     res.json({
@@ -110,9 +102,12 @@ export const applyLeave = async (req, res) => {
     });
   } catch (error) {
     console.error("Error applying leave:", error);
-    res.status(500).json({ error: "Failed to apply leave", details: error.message });
+    res
+      .status(500)
+      .json({ error: "Failed to apply leave", details: error.message });
   }
 };
+
 
 
 
@@ -158,3 +153,91 @@ export const getLeaveSummary = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch leave summary" });
   }
 };
+
+
+
+
+// ✅ Approve or Reject a leave
+export const updateLeaveStatus = async (req, res) => {
+  try {
+    const { leaveId, status } = req.body;
+
+    if (!leaveId || !status) {
+      return res.status(400).json({ error: "leaveId and status are required" });
+    }
+
+    if (!["APPROVED", "REJECTED"].includes(status)) {
+      return res.status(400).json({ error: "Status must be APPROVED or REJECTED" });
+    }
+
+    const leave = await prisma.leave.findUnique({
+      where: { id: Number(leaveId) },
+      include: { employee: { select: { id: true, leaveBalance: true } } }
+    });
+
+    if (!leave) {
+      return res.status(404).json({ error: "Leave not found" });
+    }
+
+    // ✅ Only deduct if APPROVED and PAID
+    if (status === "APPROVED" && leave.type === "PAID") {
+      await prisma.employee.update({
+        where: { id: leave.empId },
+        data: { leaveBalance: { decrement: leave.totalDays } } // 👈 cleaner way
+      });
+    }
+
+    const updatedLeave = await prisma.leave.update({
+      where: { id: Number(leaveId) },
+      data: { status },
+      include: { employee: { select: { id: true, name: true, leaveBalance: true } } }
+    });
+
+    res.json({
+      message: `Leave ${status.toLowerCase()}`,
+      leave: updatedLeave
+    });
+  } catch (error) {
+    console.error("Error updating leave status:", error);
+    res.status(500).json({ error: "Failed to update leave status" });
+  }
+};
+
+
+
+// ✅ Get all leaves for an employee in a given year
+export const getLeavesByYear = async (req, res) => {
+  try {
+    const { empId, year } = req.query; 
+
+    if (!empId || !year) {
+      return res
+        .status(400)
+        .json({ error: "empId and year are required" });
+    }
+
+    const startOfYear = new Date(`${year}-01-01`);
+    const endOfYear = new Date(`${year}-12-31`);
+
+    const leaves = await prisma.leave.findMany({
+      where: {
+        empId: Number(empId),
+        fromDate: { gte: startOfYear },
+        toDate: { lte: endOfYear },
+      },
+      orderBy: { fromDate: "asc" },
+    });
+
+    res.json({
+      empId: Number(empId),
+      year: Number(year),
+      leaves
+    });
+  } catch (error) {
+    console.error("Error fetching leaves:", error);
+    res
+      .status(500)
+      .json({ error: "Failed to fetch leaves", details: error.message });
+  }
+};
+
