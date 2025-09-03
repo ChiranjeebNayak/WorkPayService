@@ -121,3 +121,36 @@ export const handleAttendance = async (req, res) => {
     res.status(500).json({ error: "Failed to handle attendance", details: error.message });
   }
 };
+
+
+// ✅ Get all attendance for an employee by month & year
+export const getEmployeeAttendanceByMonth = async (req, res) => {
+  try {
+    const { empId, month, year } = req.query;
+
+    if (!empId || !month || !year) {
+      return res.status(400).json({ error: "empId, month, and year are required" });
+    }
+
+    const startDate = new Date(year, month - 1, 1); // first day of month
+    const endDate = new Date(year, month, 1);       // first day of next month
+
+    const attendanceRecords = await prisma.attendance.findMany({
+      where: {
+        empId: Number(empId),
+        date: {
+          gte: startDate,
+          lt: endDate,
+        },
+      },
+      orderBy: {
+        date: "asc",
+      },
+    });
+
+    res.json({month,year,attendanceRecords});
+  } catch (error) {
+    console.error("Error fetching employee attendance:", error);
+    res.status(500).json({ error: "Failed to fetch employee attendance" });
+  }
+};
