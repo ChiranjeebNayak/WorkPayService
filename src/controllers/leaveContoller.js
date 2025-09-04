@@ -172,18 +172,40 @@ export const updateLeaveStatus = async (req, res) => {
 
     const leave = await prisma.leave.findUnique({
       where: { id: Number(leaveId) },
-      include: { employee: { select: { id: true, leaveBalance: true } } }
+      include: { employee: { select: { id: true, name: true, leaveBalance: true } } }
     });
 
     if (!leave) {
       return res.status(404).json({ error: "Leave not found" });
     }
 
-    // ✅ Only deduct if APPROVED and PAID
+    // ✅ If APPROVED & PAID → reduce balance
     if (status === "APPROVED" && leave.type === "PAID") {
       await prisma.employee.update({
         where: { id: leave.empId },
-        data: { leaveBalance: { decrement: leave.totalDays } } // 👈 cleaner way
+        data: { leaveBalance: { decrement: leave.totalDays } }
+      });
+    }
+
+    // ✅ If APPROVED & UNPAID → create one transaction per unpaid day
+    if (status === "APPROVED" && leave.type === "UNPAID") {
+      const transactions = [];
+      const start = new Date(leave.fromDate);
+      const end = new Date(leave.toDate);
+
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        transactions.push({
+          empId: leave.empId,
+          amount: 1000, // per-day deduction
+          payType: "DEDUCTION",
+          description: `Deduction for unpaid leave on ${d.toISOString().split("T")[0]} (Leave ID: ${leave.id})`,
+          date: new Date(d) // set actual unpaid leave date
+        });
+      }
+
+      // Bulk insert
+      await prisma.transaction.createMany({
+        data: transactions
       });
     }
 
@@ -202,6 +224,8 @@ export const updateLeaveStatus = async (req, res) => {
     res.status(500).json({ error: "Failed to update leave status" });
   }
 };
+
+
 
 
 

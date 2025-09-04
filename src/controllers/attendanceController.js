@@ -79,41 +79,57 @@ export const handleAttendance = async (req, res) => {
       });
     }
 
-    if (type === "checkout") {
-      if (!attendance) {
-        return res.status(400).json({ message: "No check-in found for today" });
-      }
+if (type === "checkout") {
+  if (!attendance) {
+    return res.status(400).json({ message: "No check-in found for today" });
+  }
 
-      if (attendance.checkOutTime) {
-        return res.status(400).json({ 
-          message: "Employee already checked out today", 
-          attendance: attendance 
-        });
-      }
+  if (attendance.checkOutTime) {
+    return res.status(400).json({ 
+      message: "Employee already checked out today", 
+      attendance: attendance 
+    });
+  }
 
-      // Calculate overtime (hours beyond 6 PM IST)
-      const overtimeMs = nowIST - officeCheckoutIST;
-      const overTime = overtimeMs > 0 ? Math.floor(overtimeMs / (1000 * 60 * 60)) : 0;
+  // Calculate overtime (hours beyond 6 PM IST)
+  const overtimeMs = nowIST - officeCheckoutIST;
+  const overTime = overtimeMs > 0 ? Math.floor(overtimeMs / (1000 * 60 * 60)) : 0;
 
-      attendance = await prisma.attendance.update({
-        where: { id: attendance.id },
-        data: {
-          checkOutTime: nowIST,
-          overTime: overTime,
-          employee: { connect: { id: Number(empId) } }
-        }
-      });
-      
-        const istTimeString = nowIST.toLocaleTimeString('en-IN', { 
-        hour12: true,
-        timeZone: 'UTC' // Since nowIST is already in IST, treat it as UTC for display
-      });
-
-      return res.json({ 
-        message: `Check-out done at ${istTimeString}`, 
-        attendance 
-      });
+  attendance = await prisma.attendance.update({
+    where: { id: attendance.id },
+    data: {
+      checkOutTime: nowIST,
+      overTime: overTime,
+      employee: { connect: { id: Number(empId) } }
     }
+  });
+
+  // ✅ If overtime exists, create OVERTIME transaction
+  if (overTime > 0) {
+    const overtimePay = overTime * 100; // ₹100 per hour
+
+    await prisma.transaction.create({
+      data: {
+        empId: Number(empId),
+        amount: overtimePay,
+        payType: "OVERTIME",
+        description: `Overtime payment for ${overTime} hr(s) on ${nowIST.toLocaleDateString("en-IN")}`,
+        date: nowIST
+      }
+    });
+  }
+
+  const istTimeString = nowIST.toLocaleTimeString("en-IN", { 
+    hour12: true,
+    timeZone: "UTC" // Since nowIST is already in IST, treat it as UTC for display
+  });
+
+  return res.json({ 
+    message: `Check-out done at ${istTimeString}`, 
+    attendance 
+  });
+}
+
 
     res.status(400).json({ error: "Invalid type. Use 'checkin' or 'checkout'." });
   } catch (error) {
