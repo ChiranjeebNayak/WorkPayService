@@ -49,14 +49,14 @@ export const createAdmin = async (req, res) => {
 };
 
 // Get all Admins
-export const getAdmins = async (req, res) => {
-  try {
-    const admins = await prisma.admin.findMany();
-    res.json(admins);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch admins", details: error.message });
-  }
-};
+// export const getAdmins = async (req, res) => {
+//   try {
+//     const admins = await prisma.admin.findMany();
+//     res.json(admins);
+//   } catch (error) {
+//     res.status(500).json({ error: "Failed to fetch admins", details: error.message });
+//   }
+// };
 
 // Get Admin by ID
 export const getAdminById = async (req, res) => {
@@ -99,3 +99,51 @@ export const deleteAdmin = async (req, res) => {
     res.status(500).json({ error: "Failed to delete admin", details: error.message });
   }
 };
+
+
+//  Reset password with Phone (Firebase handles auth on frontend)
+export const resetPasswordWithPhone = async (req, res) => {
+  try {
+    const { phone, newPassword } = req.body;
+
+    if (!phone || !newPassword) {
+      return res.status(400).json({ error: "Phone and new password required" });
+    }
+
+    const admin = await prisma.admin.findUnique({ where: { phone } });
+    if (!admin) {
+      return res.status(404).json({ error: "Admin not found" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await prisma.admin.update({
+      where: { phone },
+      data: { password: hashedPassword },
+    });
+
+    res.json({ message: "Password reset successfully" });
+  } catch (error) {
+    console.error("Admin Reset Password with Phone error:", error);
+    res.status(500).json({ error: "Something went wrong" });
+  }
+};
+
+//  Get Admin by Phone (check if exists)
+export const getAdminByPhone = async (req, res) => {
+  try {
+    const { phone } = req.params;
+
+    if (!phone) {
+      return res.status(400).json({ error: "Phone number required" });
+    }
+
+    const admin = await prisma.admin.findUnique({ where: { phone } });
+
+    res.json({ adminFound: !!admin });
+  } catch (error) {
+    console.error("Get Admin by Phone error:", error);
+    res.status(500).json({ error: "Something went wrong" });
+  }
+};
+

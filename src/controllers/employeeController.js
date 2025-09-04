@@ -138,3 +138,87 @@ export const deleteEmployee = async (req, res) => {
     res.status(500).json({ error: "Failed to delete employee" });
   }
 };
+
+
+//  Reset password with JWT (employee logged in)
+export const resetPasswordWithJWT = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Both current and new password required" });
+    }
+
+    // req.employee comes from employeeAuth middleware
+    const employee = await prisma.employee.findUnique({
+      where: { id: req.employee.id },
+    });
+
+    if (!employee) {
+      return res.status(404).json({ error: "Employee not found" });
+    }
+
+    const isPasswordValid = await bcrypt.compare(currentPassword, employee.password);
+    if (!isPasswordValid) {
+      return res.status(400).json({ error: "Current password is incorrect" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await prisma.employee.update({
+      where: { id: employee.id },
+      data: { password: hashedPassword },
+    });
+
+    res.json({ message: "Password updated successfully" });
+  } catch (error) {
+    console.error("Reset Password with JWT error:", error);
+    res.status(500).json({ error: "Something went wrong" });
+  }
+};
+
+//  Reset password with Phone (Firebase auth already done on frontend)
+export const resetPasswordWithPhone = async (req, res) => {
+  try {
+    const { phone, newPassword } = req.body;
+
+    if (!phone || !newPassword) {
+      return res.status(400).json({ error: "Phone and new password required" });
+    }
+
+    const employee = await prisma.employee.findUnique({ where: { phone } });
+    if (!employee) {
+      return res.status(404).json({ error: "Employee not found" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await prisma.employee.update({
+      where: { phone },
+      data: { password: hashedPassword },
+    });
+
+    res.json({ message: "Password reset successfully" });
+  } catch (error) {
+    console.error("Reset Password with Phone error:", error);
+    res.status(500).json({ error: "Something went wrong" });
+  }
+};
+
+//  Get Employee by Phone (check if exists)
+export const getEmployeeByPhone = async (req, res) => {
+  try {
+    const { phone } = req.params;
+
+    if (!phone) {
+      return res.status(400).json({ error: "Phone number required" });
+    }
+
+    const employee = await prisma.employee.findUnique({ where: { phone } });
+
+    res.json({ employeeFound: !!employee });
+  } catch (error) {
+    console.error("Get Employee by Phone error:", error);
+    res.status(500).json({ error: "Something went wrong" });
+  }
+};
