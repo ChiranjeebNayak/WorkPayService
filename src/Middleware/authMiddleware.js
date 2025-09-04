@@ -25,7 +25,15 @@ export const adminAuth = async (req, res, next) => {
     next();
   } catch (error) {
     console.error("Admin Auth error:", error);
-    res.status(401).json({ error: "Invalid or expired token" });
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ error: "Token expired, please login again" });
+    }
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
+    res.status(500).json({ error: "Authentication failed" });
   }
 };
 
@@ -51,11 +59,19 @@ export const employeeAuth = async (req, res, next) => {
     next();
   } catch (error) {
     console.error("Employee Auth error:", error);
-    res.status(401).json({ error: "Invalid or expired token" });
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ error: "Token expired, please login again" });
+    }
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
+    res.status(500).json({ error: "Authentication failed" });
   }
 };
 
-// ✅ Common middleware for both admin & employee (if needed)
+// ✅ Common middleware for both admin & employee
 export const adminOrEmployeeAuth = async (req, res, next) => {
   const token = req.headers["authorization"]?.split(" ")[1];
   if (!token) return res.status(401).json({ error: "No token provided" });
@@ -78,6 +94,14 @@ export const adminOrEmployeeAuth = async (req, res, next) => {
     next();
   } catch (error) {
     console.error("Auth error:", error);
-    res.status(401).json({ error: "Invalid or expired token" });
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ error: "Token expired, please login again" });
+    }
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
+    res.status(500).json({ error: "Authentication failed" });
   }
 };
