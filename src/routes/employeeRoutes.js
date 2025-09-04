@@ -22,7 +22,7 @@ router.delete("/:id", adminAuth, deleteEmployee);
 
 //login routes
 router.post("/login", loginEmployee);
-router.post("/forgot-password",resetPasswordWithPhone);
+router.post("/reset-password",resetPasswordWithPhone);
 router.post("/update-password",resetPasswordWithJWT);
 router.get("/phone/:phone", getEmployeeByPhone); // Get employee by phone (to check if exists)
 

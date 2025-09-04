@@ -1,6 +1,6 @@
 import prisma from "../prisma.js";
 
-// ✅ Apply Leave API (No leave balance update here)
+// ✅ Apply Leave API (No leave balance update here) (employee)
 export const applyLeave = async (req, res) => {
   try {
     const { empId, reason, startDate, endDate } = req.body;
@@ -111,7 +111,7 @@ export const applyLeave = async (req, res) => {
 
 
 
-// ✅ Get latest approved, rejected and all pending leaves
+// ✅ Get latest approved, rejected and all pending leaves (admin)
 export const getLeaveSummary = async (req, res) => {
   try {
     // Latest 10 approved leaves
@@ -157,7 +157,7 @@ export const getLeaveSummary = async (req, res) => {
 
 
 
-// ✅ Approve or Reject a leave
+// ✅ Approve or Reject a leave (admin)
 export const updateLeaveStatus = async (req, res) => {
   try {
     const { leaveId, status } = req.body;
@@ -229,7 +229,7 @@ export const updateLeaveStatus = async (req, res) => {
 
 
 
-// ✅ Get all leaves for an employee in a given year
+// ✅ Get all leaves for an employee in a given year (employee)
 export const getLeavesByYear = async (req, res) => {
   try {
     const { empId, year } = req.query; 
