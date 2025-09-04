@@ -35,3 +35,32 @@ export const employeeAuth = (req, res, next) => {
     res.status(401).json({ error: "Invalid or expired token" });
   }
 };
+
+
+// ✅ Allow both Admin and Employee, and verify in DB
+export const adminOrEmployeeAuth = async (req, res, next) => {
+  const token = req.headers["authorization"]?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "No token provided" });
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    let user = null;
+
+    if (decoded.role === "admin") {
+      user = await prisma.admin.findUnique({ where: { id: decoded.id } });
+    } else if (decoded.role === "employee") {
+      user = await prisma.employee.findUnique({ where: { id: decoded.id } });
+    }
+
+    if (!user) {
+      return res.status(401).json({ error: "User not found or inactive" });
+    }
+
+    req.user = { ...decoded, dbUser: user }; // attach both token info + DB info
+    next();
+  } catch (error) {
+    console.error("Auth error:", error);
+    res.status(401).json({ error: "Invalid or expired token" });
+  }
+};

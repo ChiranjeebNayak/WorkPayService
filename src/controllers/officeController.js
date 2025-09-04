@@ -33,15 +33,48 @@ export const createDummyOffice = async (req, res) => {
   }
 };
 
-// Get all offices
-export const getOffices = async (req, res) => {
+// ✅ Get Office Settings 
+export const getOffice = async (req, res) => {
   try {
-    const offices = await prisma.office.findMany({
-      include: { employees: true },
-    });
-    res.json(offices);
+    const office = await prisma.office.findFirst();
+    if (!office) {
+      return res.status(404).json({ error: "Office settings not found" });
+    }
+    res.json(office);
   } catch (error) {
-    console.error("Error fetching offices:", error);
-    res.status(500).json({ error: "Failed to fetch offices" });
+    console.error("Error fetching office:", error);
+    res.status(500).json({ error: "Failed to fetch office" });
+  }
+};
+
+
+
+// ✅ Update Office Settings
+export const updateOffice = async (req, res) => {
+  try {
+    const { latitude, longitude, checkin, checkout } = req.body;
+
+    const office = await prisma.office.findFirst();
+    if (!office) {
+      return res.status(404).json({ error: "Office settings not found. Please create first." });
+    }
+
+    const updateData = {
+      latitude,
+      longitude,
+      checkin,
+      checkout
+
+    };
+
+    const updatedOffice = await prisma.office.update({
+      where: { id: office.id },
+      data: updateData,
+    });
+
+    res.json({ message: "Office settings updated successfully", office: updatedOffice });
+  } catch (error) {
+    console.error("Error updating office:", error);
+    res.status(500).json({ error: "Failed to update office" });
   }
 };

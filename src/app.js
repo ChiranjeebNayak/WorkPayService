@@ -6,6 +6,7 @@ import employeeRoutes from "./routes/employeeRoutes.js";
 import attendanceRoutes from "./routes/attendanceRoute.js";
 import leaveRoutes from "./routes/leaveRoutes.js";
 import transactionRouter from "./routes/transactionRoutes.js"
+import holidayRoutes from "./routes/holidayRoutes.js";
 
 const app = express();
 
@@ -22,5 +23,6 @@ app.use("/api/employees", employeeRoutes);
 app.use("/api/attendances", attendanceRoutes);
 app.use("/api/leaves", leaveRoutes);
 app.use("/api/transactions", transactionRouter);
+app.use("/api/holidays", holidayRoutes);
 
 export default app;
