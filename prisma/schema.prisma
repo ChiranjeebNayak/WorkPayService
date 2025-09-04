@@ -36,8 +36,7 @@ enum attendanceStatus {
   PRESENT
   ABSENT
   LATE 
-  LEAVE 
-  WEEKOFF 
+  LEAVE  
   HOLIDAY
 }
 
