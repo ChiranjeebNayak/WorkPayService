@@ -9,16 +9,17 @@ import {
   resetPasswordWithPhone,
   resetPasswordWithJWT,
   getEmployeeByPhone,
+  getEmployeeDashboard
 } from "../controllers/employeeController.js";
-import { adminAuth } from "../Middleware/authMiddleware.js";
+import { adminAuth,employeeAuth } from "../Middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.post("/", adminAuth, createEmployee);         // Create employee
-router.get("/", adminAuth, getEmployees);            // Get all employees
-router.get("/:id", adminAuth, getEmployeeById);      // Get single employee
-router.put("/:id", adminAuth, updateEmployee);       // Update employee
-router.delete("/:id", adminAuth, deleteEmployee);
+router.post("/add", adminAuth, createEmployee);         // Create employee
+router.get("/getAll", adminAuth, getEmployees);            // Get all employees
+router.get("/get/:id", adminAuth, getEmployeeById);      // Get single employee
+router.put("/update/:id", adminAuth, updateEmployee);       // Update employee
+router.delete("/delete/:id", adminAuth, deleteEmployee);
 
 //login routes
 router.post("/login", loginEmployee);
@@ -26,5 +27,7 @@ router.post("/reset-password",resetPasswordWithPhone);
 router.post("/update-password",resetPasswordWithJWT);
 router.get("/phone/:phone", getEmployeeByPhone); // Get employee by phone (to check if exists)
 
+
+router.get("/dashboard",employeeAuth, getEmployeeDashboard); // Get employee dashboard details
 
 export default router;

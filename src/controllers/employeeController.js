@@ -22,7 +22,7 @@ export const loginEmployee = async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    res.json({ message: "Login successful", token });
+    res.json({ message: `Employee login successful ${employee.name}`, token });
   } catch (error) {
     res.status(500).json({ error: "Failed to login employee", details: error.message });
   }
@@ -220,5 +220,65 @@ export const getEmployeeByPhone = async (req, res) => {
   } catch (error) {
     console.error("Get Employee by Phone error:", error);
     res.status(500).json({ error: "Something went wrong" });
+  }
+};
+
+
+
+
+// Get Employee Dashboard Details
+export const getEmployeeDashboard = async (req, res) => {
+  try {
+    // employeeId from JWT middleware (req.employee.id)
+    const employeeId = req.employee.id;
+
+    // Fetch employee with office
+    const employee = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { office: true },
+    });
+
+    if (!employee) {
+      return res.status(404).json({ error: "Employee not found" });
+    }
+
+    // Get today's date start & end
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // Find today's attendance
+    const attendance = await prisma.attendance.findFirst({
+      where: {
+        empId: employeeId,
+        date: { gte: todayStart, lte: todayEnd },
+      },
+    });
+
+    const response = {
+      employeeDetails: {
+        name: employee.name,
+        phone: employee.phone,
+        email: employee.email,
+        baseSalary: employee.baseSalary,
+        overtimeRate: employee.overtimeRate,
+        checkinTime: attendance ? attendance.checkin : null,
+        checkoutTime: attendance ? attendance.checkout : null,
+        overtime: attendance ? attendance.overtime : null,
+      },
+      officeDetails: {
+        latitude: employee.office.latitude,
+        longitude: employee.office.longitude,
+        checkin: employee.office.checkin,
+        checkout: employee.office.checkout,
+      },
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error("Error fetching employee dashboard:", error);
+    res.status(500).json({ error: "Failed to fetch dashboard details" });
   }
 };

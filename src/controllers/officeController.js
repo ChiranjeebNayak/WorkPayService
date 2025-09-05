@@ -64,7 +64,6 @@ export const updateOffice = async (req, res) => {
       longitude,
       checkin,
       checkout
-
     };
 
     const updatedOffice = await prisma.office.update({

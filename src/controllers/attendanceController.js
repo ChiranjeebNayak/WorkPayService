@@ -13,10 +13,13 @@ const getCurrentIST = () => {
 // Helper function to get today's start (midnight) in IST
 const getTodayStartIST = () => {
   const nowIST = getCurrentIST();
-  // Create midnight IST and store as IST time (not converted back to UTC)
   const midnightIST = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate());
-  // Add 5.5 hours to make it IST equivalent stored as UTC+5.5
   return new Date(midnightIST.getTime() + (5.5 * 60 * 60 * 1000));
+};
+
+// Helper function to extract time in minutes from a date (for time-only comparison)
+const getTimeInMinutes = (date) => {
+  return date.getUTCHours() * 60 + date.getUTCMinutes();
 };
 
 // Attendance Check-In / Check-Out
@@ -31,12 +34,19 @@ export const handleAttendance = async (req, res) => {
     const todayStartIST = getTodayStartIST();
     const todayEndIST = new Date(todayStartIST.getTime() + 24 * 60 * 60 * 1000);
 
-    // Hardcoded office times in IST
-    const officeCheckinIST = new Date(todayStartIST);
-    officeCheckinIST.setHours(9, 0, 0, 0); // 9:00 AM IST
+    // ✅ Fetch office timings
+    const office = await prisma.office.findFirst();
+    if (!office) {
+      return res.status(404).json({ error: "Office details not found" });
+    }
 
-    const officeCheckoutIST = new Date(todayStartIST);
-    officeCheckoutIST.setHours(18, 0, 0, 0); // 6:00 PM IST
+    const officeCheckinIST = new Date(office.checkin);
+    const officeCheckoutIST = new Date(office.checkout);
+
+    // Extract time in minutes for comparison (ignoring date part)
+    const currentTimeMinutes = getTimeInMinutes(nowIST);
+    const officeCheckinMinutes = getTimeInMinutes(officeCheckinIST);
+    const officeCheckoutMinutes = getTimeInMinutes(officeCheckoutIST);
 
     // Check if attendance already exists for today
     let attendance = await prisma.attendance.findFirst({
@@ -54,8 +64,9 @@ export const handleAttendance = async (req, res) => {
         return res.status(400).json({ message: "Employee already checked in today" });
       }
 
-      // Determine if present or late (within 30 mins of 9:00 AM IST)
-      const status = nowIST - officeCheckinIST <= 30 * 60 * 1000 ? "PRESENT" : "LATE";
+      // Determine if present or late (within 30 mins of office checkin time)
+      const lateThresholdMinutes = officeCheckinMinutes + 30;
+      const status = currentTimeMinutes <= lateThresholdMinutes ? "PRESENT" : "LATE";
 
       attendance = await prisma.attendance.create({
         data: {
@@ -68,9 +79,9 @@ export const handleAttendance = async (req, res) => {
         }
       });
 
-        const istTimeString = nowIST.toLocaleTimeString('en-IN', { 
+      const istTimeString = nowIST.toLocaleTimeString("en-IN", { 
         hour12: true,
-        timeZone: 'UTC' // Since nowIST is already in IST, treat it as UTC for display
+        timeZone: "UTC"
       });
 
       return res.json({ 
@@ -79,57 +90,67 @@ export const handleAttendance = async (req, res) => {
       });
     }
 
-if (type === "checkout") {
-  if (!attendance) {
-    return res.status(400).json({ message: "No check-in found for today" });
-  }
-
-  if (attendance.checkOutTime) {
-    return res.status(400).json({ 
-      message: "Employee already checked out today", 
-      attendance: attendance 
-    });
-  }
-
-  // Calculate overtime (hours beyond 6 PM IST)
-  const overtimeMs = nowIST - officeCheckoutIST;
-  const overTime = overtimeMs > 0 ? Math.floor(overtimeMs / (1000 * 60 * 60)) : 0;
-
-  attendance = await prisma.attendance.update({
-    where: { id: attendance.id },
-    data: {
-      checkOutTime: nowIST,
-      overTime: overTime,
-      employee: { connect: { id: Number(empId) } }
-    }
-  });
-
-  // ✅ If overtime exists, create OVERTIME transaction
-  if (overTime > 0) {
-    const overtimePay = overTime * 100; // ₹100 per hour
-
-    await prisma.transaction.create({
-      data: {
-        empId: Number(empId),
-        amount: overtimePay,
-        payType: "OVERTIME",
-        description: `Overtime payment for ${overTime} hr(s) on ${nowIST.toLocaleDateString("en-IN")}`,
-        date: nowIST
+    if (type === "checkout") {
+      if (!attendance) {
+        return res.status(400).json({ message: "No check-in found for today" });
       }
-    });
-  }
 
-  const istTimeString = nowIST.toLocaleTimeString("en-IN", { 
-    hour12: true,
-    timeZone: "UTC" // Since nowIST is already in IST, treat it as UTC for display
-  });
+      if (attendance.checkOutTime) {
+        return res.status(400).json({ 
+          message: "Employee already checked out today", 
+          attendance 
+        });
+      }
 
-  return res.json({ 
-    message: `Check-out done at ${istTimeString}`, 
-    attendance 
-  });
-}
+      // ✅ Fetch employee for overtimeRate
+      const employee = await prisma.employee.findUnique({
+        where: { id: Number(empId) },
+        select: { overtimeRate: true }
+      });
 
+      if (!employee) {
+        return res.status(404).json({ error: "Employee not found" });
+      }
+
+      // Calculate overtime in minutes (time beyond office checkout time)
+      const overtimeMinutes = currentTimeMinutes > officeCheckoutMinutes ? 
+        currentTimeMinutes - officeCheckoutMinutes : 0;
+
+      attendance = await prisma.attendance.update({
+        where: { id: attendance.id },
+        data: {
+          checkOutTime: nowIST,
+          overTime: overtimeMinutes,
+          employee: { connect: { id: Number(empId) } }
+        }
+      });
+
+      // ✅ If overtime exists, create OVERTIME transaction (convert minutes to hours)
+      if (overtimeMinutes > 0) {
+        const overtimeHours = overtimeMinutes / 60;
+        const overtimePay = overtimeHours * employee.overtimeRate;
+
+        await prisma.transaction.create({
+          data: {
+            empId: Number(empId),
+            amount: overtimePay,
+            payType: "OVERTIME",
+            description: `Overtime payment for ${overtimeHours.toFixed(2)} hr(s) on ${nowIST.toLocaleDateString("en-IN")}`,
+            date: nowIST
+          }
+        });
+      }
+
+      const istTimeString = nowIST.toLocaleTimeString("en-IN", { 
+        hour12: true,
+        timeZone: "UTC"
+      });
+
+      return res.json({ 
+        message: `Check-out done at ${istTimeString}`, 
+        attendance 
+      });
+    }
 
     res.status(400).json({ error: "Invalid type. Use 'checkin' or 'checkout'." });
   } catch (error) {
