@@ -226,6 +226,17 @@ export const getEmployeeByPhone = async (req, res) => {
 
 
 
+// Helper function to format time from datetime to readable format
+const formatTimeOnly = (datetime) => {
+  if (!datetime) return null;
+  return new Date(datetime).toLocaleTimeString("en-IN", {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: "UTC"
+  });
+};
+
 // Get Employee Dashboard Details
 export const getEmployeeDashboard = async (req, res) => {
   try {
@@ -264,15 +275,15 @@ export const getEmployeeDashboard = async (req, res) => {
         email: employee.email,
         baseSalary: employee.baseSalary,
         overtimeRate: employee.overtimeRate,
-        checkinTime: attendance ? attendance.checkin : null,
-        checkoutTime: attendance ? attendance.checkout : null,
-        overtime: attendance ? attendance.overtime : null,
+        checkinTime: attendance ? formatTimeOnly(attendance.checkInTime) : null,
+        checkoutTime: attendance ? formatTimeOnly(attendance.checkOutTime) : null,
+        overtime: attendance ? attendance.overTime : null,
       },
       officeDetails: {
         latitude: employee.office.latitude,
         longitude: employee.office.longitude,
-        checkin: employee.office.checkin,
-        checkout: employee.office.checkout,
+        checkin: formatTimeOnly(employee.office.checkin), // This will show "09:00 AM"
+        checkout: formatTimeOnly(employee.office.checkout), // This will show "06:00 PM"
       },
     };
 
