@@ -10,12 +10,15 @@ const getCurrentIST = () => {
   return toIST(new Date());
 };
 
-// Helper function to get today's start (midnight) in IST
+// CORRECTED: Helper function to get today's start (midnight) in IST
 const getTodayStartIST = () => {
   const nowIST = getCurrentIST();
-  const midnightIST = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate());
-  return new Date(midnightIST.getTime() + (5.5 * 60 * 60 * 1000));
+  // Create a new date at midnight in IST timezone
+  const midnightIST = new Date(nowIST);
+  midnightIST.setUTCHours(0, 0, 0, 0);
+  return midnightIST;
 };
+
 
 // Helper function to extract time in minutes from a date (for time-only comparison)
 const getTimeInMinutes = (date) => {
@@ -34,6 +37,11 @@ export const handleAttendance = async (req, res) => {
     const nowIST = getCurrentIST();
     const todayStartIST = getTodayStartIST();
     const todayEndIST = new Date(todayStartIST.getTime() + 24 * 60 * 60 * 1000);
+
+    // DEBUG: Add these console logs to verify dates
+    console.log("Current IST:", nowIST.toISOString());
+    console.log("Today Start (Date only):", todayStartIST.toISOString());
+    console.log("Today End (Date only):", todayEndIST.toISOString());
 
     // ✅ Fetch office timings
     const office = await prisma.office.findFirst();
@@ -62,7 +70,13 @@ export const handleAttendance = async (req, res) => {
 
     if (type === "checkin") {
       if (attendance) {
-        return res.status(400).json({ message: "Employee already checked in today" });
+        return res.status(200).json({ 
+          message: `Employee already checked in today`,
+          debugInfo: {
+            todayStartIST: todayStartIST.toISOString(),
+            currentIST: nowIST.toISOString()
+          }
+        });
       }
 
       // Determine if present or late (within 30 mins of office checkin time)
@@ -80,14 +94,19 @@ export const handleAttendance = async (req, res) => {
         }
       });
 
-      const istTimeString = nowIST.toLocaleTimeString("en-IN", { 
+      // Fix the time string display - use proper IST formatting
+      const istTimeString = nowIST.toLocaleString("en-IN", {
         hour12: true,
-        timeZone: "UTC"
+        timeZone: "Asia/Kolkata"
       });
 
       return res.json({ 
         message: `Check-in ${status} at ${istTimeString}`, 
-        attendance 
+        attendance,
+        debugInfo: {
+          storedDate: attendance.date.toISOString(),
+          checkInTime: attendance.checkInTime.toISOString()
+        }
       });
     }
 
@@ -136,15 +155,16 @@ export const handleAttendance = async (req, res) => {
             empId: Number(employeeId),
             amount: overtimePay,
             payType: "OVERTIME",
-            description: `Overtime payment for ${overtimeHours.toFixed(2)} hr(s) on ${nowIST.toLocaleDateString("en-IN")}`,
+            description: `Overtime payment for ${overtimeHours.toFixed(2)} hr(s) on ${nowIST.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}`,
             date: nowIST
           }
         });
       }
 
-      const istTimeString = nowIST.toLocaleTimeString("en-IN", { 
+      // Fix the time string display
+      const istTimeString = nowIST.toLocaleString("en-IN", {
         hour12: true,
-        timeZone: "UTC"
+        timeZone: "Asia/Kolkata"
       });
 
       return res.json({ 

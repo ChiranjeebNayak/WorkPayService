@@ -31,10 +31,21 @@ export const loginEmployee = async (req, res) => {
 // ✅ Create Employee
 export const createEmployee = async (req, res) => {
   try {
-    const { name, phone, email, password, baseSalary, overtimeRate, officeId, adminId } = req.body;
+    const adminId = req.admin.id; // from adminAuth middleware
+    const { name, phone, email, password, baseSalary, overtimeRate, officeId } = req.body;
 
     if (!name || !phone || !email || !password || !baseSalary || !overtimeRate || !officeId || !adminId) {
       return res.status(400).json({ error: "All required fields must be provided" });
+    }
+
+    const existingPhone = await prisma.employee.findUnique({ where: { phone } });
+    if (existingPhone) {
+      return res.status(400).json({ error: "Employee with this phone number already exists" });
+    }
+
+    const existingEmail = await prisma.employee.findUnique({ where: { email } });
+    if (existingEmail) {
+      return res.status(400).json({ error: "Employee with this email already exists" });
     }
 
     // hash password
@@ -46,14 +57,23 @@ export const createEmployee = async (req, res) => {
         phone,
         email,
         password: hashedPassword,
-        baseSalary,
-        overtimeRate,
-        officeId,
-        adminId,
+        baseSalary:Number(baseSalary),
+        overtimeRate:Number(overtimeRate),
+        officeId:Number(officeId),
+        adminId:Number(adminId),
       },
     });
 
-    res.status(201).json(employee);
+    res.status(201).json(
+      { message: `Employee created successfully: ${employee.name}`, data: {
+        id: employee.id,
+        name: employee.name,
+        phone: employee.phone,
+        email: employee.email,
+        baseSalary: employee.baseSalary,
+        overtimeRate: employee.overtimeRate,
+      } }
+    );
   } catch (error) {
     console.error("Error creating employee:", error);
     res.status(500).json({ error: "Failed to create employee" });
@@ -82,7 +102,14 @@ export const getEmployeeById = async (req, res) => {
 
     if (!employee) return res.status(404).json({ error: "Employee not found" });
 
-    res.json(employee);
+    res.json({message: `Employee fetched successfully: ${employee.name}`, data: {
+      id: employee.id,
+      name: employee.name,
+      phone: employee.phone,
+      email: employee.email,
+      baseSalary: employee.baseSalary,
+      overtimeRate: employee.overtimeRate,
+    } });
   } catch (error) {
     console.error("Error fetching employee:", error);
     res.status(500).json({ error: "Failed to fetch employee" });
@@ -93,17 +120,17 @@ export const getEmployeeById = async (req, res) => {
 export const updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, phone, email, password, baseSalary, overtimeRate, leaveBalance, officeId, adminId } = req.body;
+    const adminId = req.admin.id; // from adminAuth middleware
+    const { name, phone, email, password, baseSalary, overtimeRate, officeId } = req.body;
 
     const updateData = {
       name,
       phone,
       email,
-      baseSalary,
-      overtimeRate,
-      leaveBalance,
-      officeId,
-      adminId,
+      baseSalary:Number(baseSalary),
+      overtimeRate:Number(overtimeRate),
+      officeId:Number(officeId),
+      adminId:Number(adminId),
     };
 
     // If password provided, hash it
@@ -116,7 +143,14 @@ export const updateEmployee = async (req, res) => {
       data: updateData,
     });
 
-    res.json(updatedEmployee);
+    res.json({ message: `Employee updated successfully: ${updatedEmployee.name}`, data: {
+      id: updatedEmployee.id,
+      name: updatedEmployee.name,
+      phone: updatedEmployee.phone,
+      email: updatedEmployee.email,
+      baseSalary: updatedEmployee.baseSalary,
+      overtimeRate: updatedEmployee.overtimeRate,
+    } });
   } catch (error) {
     console.error("Error updating employee:", error);
     res.status(500).json({ error: "Failed to update employee" });
