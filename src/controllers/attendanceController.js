@@ -236,7 +236,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     // ---- Absent Employees List ----
     const absentees = await prisma.attendance.findMany({
       where: {
-        status: "LATE",
+        status: "ABSENT",
         date: {
           gte: todayStart,
           lt: tomorrowStart,
