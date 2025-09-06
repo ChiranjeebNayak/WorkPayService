@@ -8,9 +8,9 @@ const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 // ✅ Employee Login
 export const loginEmployee = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { phone, password } = req.body;
 
-    const employee = await prisma.employee.findUnique({ where: { email } });
+    const employee = await prisma.employee.findUnique({ where: { phone } });
     if (!employee) return res.status(404).json({ error: "Employee not found" });
 
     const isPasswordValid = await bcrypt.compare(password, employee.password);
@@ -270,6 +270,7 @@ export const getEmployeeDashboard = async (req, res) => {
 
     const response = {
       employeeDetails: {
+        id: employee.id,
         name: employee.name,
         phone: employee.phone,
         email: employee.email,
@@ -284,6 +285,7 @@ export const getEmployeeDashboard = async (req, res) => {
         longitude: employee.office.longitude,
         checkin: formatTimeOnly(employee.office.checkin), // This will show "09:00 AM"
         checkout: formatTimeOnly(employee.office.checkout), // This will show "06:00 PM"
+        breakTime: employee.office.breakTime, // in minutes
       },
     };
 

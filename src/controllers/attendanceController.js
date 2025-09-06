@@ -25,9 +25,10 @@ const getTimeInMinutes = (date) => {
 // Attendance Check-In / Check-Out
 export const handleAttendance = async (req, res) => {
   try {
-    const { empId, type } = req.body;
-    if (!empId || !type) {
-      return res.status(400).json({ error: "empId and type are required" });
+    const employeeId = req.employee.id;
+    const { type } = req.body;
+    if (!employeeId || !type) {
+      return res.status(400).json({ error: "employeeId and type are required" });
     }
 
     const nowIST = getCurrentIST();
@@ -51,7 +52,7 @@ export const handleAttendance = async (req, res) => {
     // Check if attendance already exists for today
     let attendance = await prisma.attendance.findFirst({
       where: {
-        empId: Number(empId),
+        empId: Number(employeeId),
         date: {
           gte: todayStartIST,
           lt: todayEndIST,
@@ -75,7 +76,7 @@ export const handleAttendance = async (req, res) => {
           checkOutTime: null,
           overTime: 0,
           status: status,
-          employee: { connect: { id: Number(empId) } }
+          employee: { connect: { id: Number(employeeId) } }
         }
       });
 
@@ -104,7 +105,7 @@ export const handleAttendance = async (req, res) => {
 
       // ✅ Fetch employee for overtimeRate
       const employee = await prisma.employee.findUnique({
-        where: { id: Number(empId) },
+        where: { id: Number(employeeId) },
         select: { overtimeRate: true }
       });
 
@@ -121,7 +122,7 @@ export const handleAttendance = async (req, res) => {
         data: {
           checkOutTime: nowIST,
           overTime: overtimeMinutes,
-          employee: { connect: { id: Number(empId) } }
+          employee: { connect: { id: Number(employeeId) } }
         }
       });
 
@@ -132,7 +133,7 @@ export const handleAttendance = async (req, res) => {
 
         await prisma.transaction.create({
           data: {
-            empId: Number(empId),
+            empId: Number(employeeId),
             amount: overtimePay,
             payType: "OVERTIME",
             description: `Overtime payment for ${overtimeHours.toFixed(2)} hr(s) on ${nowIST.toLocaleDateString("en-IN")}`,
@@ -163,7 +164,8 @@ export const handleAttendance = async (req, res) => {
 // ✅ Get all attendance for an employee by month & year
 export const getEmployeeAttendanceByMonth = async (req, res) => {
   try {
-    const { empId, month, year } = req.query;
+    const empId = req.employee.id;
+    const {  month, year } = req.query;
 
     if (!empId || !month || !year) {
       return res.status(400).json({ error: "empId, month, and year are required" });

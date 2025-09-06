@@ -52,7 +52,7 @@ export const getOffice = async (req, res) => {
 // ✅ Update Office Settings
 export const updateOffice = async (req, res) => {
   try {
-    const { latitude, longitude, checkin, checkout } = req.body;
+    const { latitude, longitude, checkin, checkout ,breakTime} = req.body;
 
     const office = await prisma.office.findFirst();
     if (!office) {
@@ -63,7 +63,8 @@ export const updateOffice = async (req, res) => {
       latitude,
       longitude,
       checkin,
-      checkout
+      checkout,
+      breakTime
     };
 
     const updatedOffice = await prisma.office.update({
