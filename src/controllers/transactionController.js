@@ -64,7 +64,8 @@ export const addTransaction = async (req, res) => {
 // ✅ Get transactions by empId & year (for employee)
 export const getEmployeeTransactions = async (req, res) => {
   try {
-    const { empId, year } = req.query;
+    const empId = req.employee.id;
+    const { year } = req.query;
 
     if (!empId || !year) {
       return res.status(400).json({ error: "empId and year are required" });
