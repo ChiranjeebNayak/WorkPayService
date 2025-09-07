@@ -1,6 +1,6 @@
 import prisma from "../prisma.js";
 
-// ✅ Apply Leave API (No leave balance update here) (employee)
+// ✅ Apply Leave API (Updates leave balance for paid leaves) (employee)
 export const applyLeave = async (req, res) => {
   try {
     const { empId, reason, startDate, endDate } = req.body;
@@ -13,6 +13,60 @@ export const applyLeave = async (req, res) => {
 
     const fromDate = new Date(startDate);
     const toDate = new Date(endDate);
+
+    // Validate date range
+    if (fromDate > toDate) {
+      return res.status(400).json({ error: "Start date cannot be after end date" });
+    }
+
+    // Check for overlapping leaves
+    const existingLeaves = await prisma.leave.findMany({
+      where: {
+        empId: Number(empId),
+        OR: [
+          // Case 1: New leave start date falls within existing leave period
+          {
+            AND: [
+              { fromDate: { lte: fromDate } },
+              { toDate: { gte: fromDate } }
+            ]
+          },
+          // Case 2: New leave end date falls within existing leave period
+          {
+            AND: [
+              { fromDate: { lte: toDate } },
+              { toDate: { gte: toDate } }
+            ]
+          },
+          // Case 3: New leave completely covers existing leave
+          {
+            AND: [
+              { fromDate: { gte: fromDate } },
+              { toDate: { lte: toDate } }
+            ]
+          },
+          // Case 4: Existing leave completely covers new leave
+          {
+            AND: [
+              { fromDate: { lte: fromDate } },
+              { toDate: { gte: toDate } }
+            ]
+          }
+        ]
+      }
+    });
+
+    if (existingLeaves.length > 0) {
+      return res.status(400).json({ 
+        error: "Leave dates conflict with existing leave applications",
+        conflictingLeaves: existingLeaves.map(leave => ({
+          id: leave.id,
+          fromDate: leave.fromDate,
+          toDate: leave.toDate,
+          type: leave.type
+        }))
+      });
+    }
 
     // Calculate total days (inclusive of both fromDate & toDate)
     const totalDays =
@@ -44,7 +98,7 @@ export const applyLeave = async (req, res) => {
       });
       leaveApplications.push(leave);
     } else if (employee.leaveBalance >= totalDays) {
-      // 🔹 Fully paid leave
+      // 🔹 Fully paid leave - decrement leave balance
       const leave = await prisma.leave.create({
         data: {
           empId: Number(empId),
@@ -55,6 +109,15 @@ export const applyLeave = async (req, res) => {
           type: "PAID",
         },
       });
+
+      // Update employee leave balance
+      await prisma.employee.update({
+        where: { id: Number(empId) },
+        data: {
+          leaveBalance: employee.leaveBalance - totalDays,
+        },
+      });
+
       leaveApplications.push(leave);
     } else {
       // 🔹 Partial: split into PAID + UNPAID
@@ -90,6 +153,14 @@ export const applyLeave = async (req, res) => {
           toDate,
           totalDays: unpaidDays,
           type: "UNPAID",
+        },
+      });
+
+      // Update employee leave balance (set to 0 since all paid days are used)
+      await prisma.employee.update({
+        where: { id: Number(empId) },
+        data: {
+          leaveBalance: 0,
         },
       });
 
@@ -232,7 +303,8 @@ export const updateLeaveStatus = async (req, res) => {
 // ✅ Get all leaves for an employee in a given year (employee)
 export const getLeavesByYear = async (req, res) => {
   try {
-    const { empId, year } = req.query; 
+    const empId = req.employee.id;
+    const {  year } = req.query; 
 
     if (!empId || !year) {
       return res
