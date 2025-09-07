@@ -132,9 +132,17 @@ export const handleAttendance = async (req, res) => {
         return res.status(404).json({ error: "Employee not found" });
       }
 
-      // Calculate overtime in minutes (time beyond office checkout time)
-      const overtimeMinutes = currentTimeMinutes > officeCheckoutMinutes ? 
-        currentTimeMinutes - officeCheckoutMinutes : 0;
+      // Calculate total office hours in minutes (office checkout - office checkin)
+      const totalOfficeHoursMinutes = officeCheckoutMinutes - officeCheckinMinutes;
+
+      // Calculate total employee worked hours in minutes (employee checkout - employee checkin)
+      const employeeCheckinMinutes = getTimeInMinutes(attendance.checkInTime);
+      const employeeCheckoutMinutes = currentTimeMinutes;
+      const totalWorkedMinutes = employeeCheckoutMinutes - employeeCheckinMinutes;
+
+      // Calculate overtime in minutes (if worked hours exceed office hours)
+      const overtimeMinutes = totalWorkedMinutes > totalOfficeHoursMinutes ? 
+        totalWorkedMinutes - totalOfficeHoursMinutes : 0;
 
       attendance = await prisma.attendance.update({
         where: { id: attendance.id },
@@ -288,4 +296,41 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch dashboard attendance" });
   }
 };
+
+
+// ✅ Get all attendance for an employee by month & year
+export const getEmployeeAttendanceByMonthInAdmin = async (req, res) => {
+  try {
+    const {  month, year,empId } = req.query;
+
+    if (!empId || !month || !year) {
+      return res.status(400).json({ error: "empId, month, and year are required" });
+    }
+
+    const startDate = new Date(year, month - 1, 1); // first day of month
+    const endDate = new Date(year, month, 1);       // first day of next month
+
+    const attendanceRecords = await prisma.attendance.findMany({
+      where: {
+        empId: Number(empId),
+        date: {
+          gte: startDate,
+          lt: endDate,
+        },
+      },
+      orderBy: {
+        date: "asc",
+      },
+    });
+
+    res.json({month,year,attendanceRecords});
+  } catch (error) {
+    console.error("Error fetching employee attendance:", error);
+    res.status(500).json({ error: "Failed to fetch employee attendance" });
+  }
+};
+
+
+
+
 
