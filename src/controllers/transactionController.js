@@ -74,10 +74,21 @@ export const getEmployeeTransactions = async (req, res) => {
     const empIdNum = Number(empId);
     const yearNum = Number(year);
 
+    const employee = await prisma.employee.findUnique({
+      where: { id: empIdNum },
+      select: { baseSalary: true }
+    });
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-indexed
+    const currentMonthName = now.toLocaleString("default", { month: "long" });
+
+    // Get transactions for the requested year
     const yearStart = new Date(yearNum, 0, 1); // Jan 1 YYYY
     const yearEnd = new Date(yearNum + 1, 0, 1); // Jan 1 YYYY+1
 
-    const transactions = await prisma.transaction.findMany({
+    const requestedYearTransactions = await prisma.transaction.findMany({
       where: {
         empId: empIdNum,
         date: { gte: yearStart, lt: yearEnd }
@@ -85,40 +96,52 @@ export const getEmployeeTransactions = async (req, res) => {
       orderBy: { date: "asc" }
     });
 
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth(); // 0-indexed
+    // Get current month transactions (always from today's month/year)
+    const currentMonthStart = new Date(currentYear, currentMonth, 1);
+    const currentMonthEnd = new Date(currentYear, currentMonth + 1, 1);
+
+    const currentMonthTransactions = await prisma.transaction.findMany({
+      where: {
+        empId: empIdNum,
+        date: { gte: currentMonthStart, lt: currentMonthEnd }
+      },
+      orderBy: { date: "asc" }
+    });
 
     let response = {
       year: yearNum,
-      currentTransaction: null,
+      currentTransaction: {
+        month: currentMonthName,
+        baseSalary: employee.baseSalary,
+        transactions: currentMonthTransactions
+      },
+      baseSalary: employee.baseSalary,
       previousTransaction: []
     };
 
-    // Group transactions
-    for (let t of transactions) {
+    // Group requested year transactions into previous transactions
+    for (let t of requestedYearTransactions) {
       const tDate = new Date(t.date);
+      const tYear = tDate.getFullYear();
       const tMonth = tDate.getMonth(); // 0-indexed
       const monthName = tDate.toLocaleString("default", { month: "long" });
 
-      if (yearNum === currentYear && tMonth === currentMonth) {
-        // current month
-        if (!response.currentTransaction) {
-          response.currentTransaction = {
-            month: monthName,
-            transactions: []
-          };
-        }
-        response.currentTransaction.transactions.push(t);
-      } else {
-        // previous months
-        let prev = response.previousTransaction.find(p => p.month === monthName);
-        if (!prev) {
-          prev = { month: monthName, transactions: [] };
-          response.previousTransaction.push(prev);
-        }
-        prev.transactions.push(t);
+      // Skip if this transaction is from current month/year (already in currentTransaction)
+      if (tYear === currentYear && tMonth === currentMonth) {
+        continue;
       }
+
+      // Add to previous months
+      let prev = response.previousTransaction.find(p => p.month === monthName);
+      if (!prev) {
+        prev = { 
+          month: monthName, 
+          baseSalary: employee.baseSalary, 
+          transactions: [] 
+        };
+        response.previousTransaction.push(prev);
+      }
+      prev.transactions.push(t);
     }
 
     res.json(response);
@@ -152,7 +175,7 @@ export const getMonthlyTransactions = async (req, res) => {
       },
       orderBy: { date: "asc" },
       include: {
-        employee: { select: { id: true, name: true } }
+        employee: { select: { id: true, name: true,phone:true } }
       }
     });
 
@@ -164,6 +187,7 @@ export const getMonthlyTransactions = async (req, res) => {
         paymentsMap.set(t.empId, {
           empId: t.empId,
           name: t.employee.name,
+          phone:t.employee.phone,
           transactions: []
         });
       }
