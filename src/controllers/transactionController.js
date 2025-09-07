@@ -175,7 +175,7 @@ export const getMonthlyTransactions = async (req, res) => {
       },
       orderBy: { date: "asc" },
       include: {
-        employee: { select: { id: true, name: true,phone:true } }
+        employee: { select: { id: true, name: true,phone:true,baseSalary:true } }
       }
     });
 
@@ -188,6 +188,7 @@ export const getMonthlyTransactions = async (req, res) => {
           empId: t.empId,
           name: t.employee.name,
           phone:t.employee.phone,
+          baseSalary:t.employee.baseSalary,
           transactions: []
         });
       }
