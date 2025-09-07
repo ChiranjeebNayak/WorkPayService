@@ -277,6 +277,15 @@ export const getTodayAttendanceDashboard = async (req, res) => {
       },
     });
 
+   const pendingLeaves = await prisma.leave.findMany({
+      where: { status: "PENDING" },
+      orderBy: { applyDate: "desc" },
+      take:5,
+      include: {
+        employee: { select: { id: true, name: true } }
+      }
+    });
+
     const absentList = absentees.map(a => ({
       id: a.employee.id,
       name: a.employee.name,
@@ -290,6 +299,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
       totalPresent,
       totalAbsent,
       absentList,
+      pendingLeaves
     });
   } catch (error) {
     console.error("Error fetching dashboard attendance:", error);

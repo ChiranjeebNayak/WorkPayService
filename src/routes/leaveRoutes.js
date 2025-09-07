@@ -1,16 +1,16 @@
 import express from "express";
 import { applyLeave,getLeaveSummary ,updateLeaveStatus,getLeavesByYear} from "../controllers/leaveContoller.js";
-import {employeeAuth} from "../Middleware/authMiddleware.js"
+import {employeeAuth,adminAuth} from "../Middleware/authMiddleware.js"
 const leaveRoutes = express.Router();
 
 // ✅ Apply for leave
 leaveRoutes.post("/apply", employeeAuth, applyLeave);
 
 // ✅ Leave dashboard summary
-leaveRoutes.get("/summary", getLeaveSummary);
+leaveRoutes.get("/summary",adminAuth, getLeaveSummary);
 
 // ✅ Approve/Reject leave
-leaveRoutes.post("/update-status", updateLeaveStatus);
+leaveRoutes.post("/update-status",adminAuth, updateLeaveStatus);
 
 leaveRoutes.get("/employee-leaves", employeeAuth,getLeavesByYear);
 
