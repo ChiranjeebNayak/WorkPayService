@@ -211,7 +211,7 @@ export const getEmployeeAttendanceByMonth = async (req, res) => {
         },
       },
       orderBy: {
-        date: "asc",
+        date: "desc",
       },
     });
 

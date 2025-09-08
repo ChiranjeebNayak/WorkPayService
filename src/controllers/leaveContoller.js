@@ -1,6 +1,6 @@
 import prisma from "../prisma.js";
 
-// ✅ Apply Leave API (Updates leave balance for paid leaves) (employee)
+// ✅ Apply Leave API (Does not update leave balance - only when approved by admin) (employee)
 export const applyLeave = async (req, res) => {
   try {
     const { empId, reason, startDate, endDate } = req.body;
@@ -98,7 +98,7 @@ export const applyLeave = async (req, res) => {
       });
       leaveApplications.push(leave);
     } else if (employee.leaveBalance >= totalDays) {
-      // 🔹 Fully paid leave - decrement leave balance
+      // 🔹 Fully paid leave - NO balance deduction here (will be done on approval)
       const leave = await prisma.leave.create({
         data: {
           empId: Number(empId),
@@ -107,14 +107,6 @@ export const applyLeave = async (req, res) => {
           toDate,
           totalDays,
           type: "PAID",
-        },
-      });
-
-      // Update employee leave balance
-      await prisma.employee.update({
-        where: { id: Number(empId) },
-        data: {
-          leaveBalance: employee.leaveBalance - totalDays,
         },
       });
 
@@ -153,14 +145,6 @@ export const applyLeave = async (req, res) => {
           toDate,
           totalDays: unpaidDays,
           type: "UNPAID",
-        },
-      });
-
-      // Update employee leave balance (set to 0 since all paid days are used)
-      await prisma.employee.update({
-        where: { id: Number(empId) },
-        data: {
-          leaveBalance: 0,
         },
       });
 
@@ -336,4 +320,43 @@ export const getLeavesByYear = async (req, res) => {
       .json({ error: "Failed to fetch leaves", details: error.message });
   }
 };
+
+
+// ✅ Get all leaves for an employee in a given year (admin)
+export const getEmployeeLeaveHistory = async (req, res) => {
+  try {
+
+    const { empId, year } = req.query; 
+
+    if (!empId || !year) {
+      return res
+        .status(400)
+        .json({ error: "empId and year are required" });
+    }
+
+    const startOfYear = new Date(`${year}-01-01`);
+    const endOfYear = new Date(`${year}-12-31`);
+
+    const leaves = await prisma.leave.findMany({
+      where: {
+        empId: Number(empId),
+        fromDate: { gte: startOfYear },
+        toDate: { lte: endOfYear },
+      },
+      orderBy: { fromDate: "asc" },
+    });
+
+    res.json({
+      empId: Number(empId),
+      year: Number(year),
+      leaves
+    });
+  } catch (error) {
+    console.error("Error fetching leaves:", error);
+    res
+      .status(500)
+      .json({ error: "Failed to fetch leaves", details: error.message });
+  }
+};
+
 

@@ -215,3 +215,84 @@ export const getMonthlyTransactions = async (req, res) => {
 };
 
 
+
+
+// ✅ Get transactions by empId & year (from query parameters)
+export const getEmployeeTransactionsAdmin = async (req, res) => {
+  try {
+    const { empId, year } = req.query;
+
+    if (!empId || !year) {
+      return res.status(400).json({ error: "empId and year are required" });
+    }
+
+    const empIdNum = Number(empId);
+    const yearNum = Number(year);
+
+    // Validate empId and year are valid numbers
+    if (isNaN(empIdNum) || isNaN(yearNum)) {
+      return res.status(400).json({ error: "empId and year must be valid numbers" });
+    }
+
+    // Get employee details
+    const employee = await prisma.employee.findUnique({
+      where: { id: empIdNum },
+      select: { baseSalary: true }
+    });
+
+    if (!employee) {
+      return res.status(404).json({ error: "Employee not found" });
+    }
+
+    // Get transactions for the requested year
+    const yearStart = new Date(yearNum, 0, 1); // Jan 1 YYYY
+    const yearEnd = new Date(yearNum + 1, 0, 1); // Jan 1 YYYY+1
+
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        empId: empIdNum,
+        date: { gte: yearStart, lt: yearEnd }
+      },
+      orderBy: { date: "desc" } // Latest transactions first
+    });
+
+    // Group transactions by month
+    const transactionsData = [];
+    const monthGroups = {};
+
+    for (let transaction of transactions) {
+      const transactionDate = new Date(transaction.date);
+      const monthName = transactionDate.toLocaleString("default", { month: "long" }).toLowerCase();
+      
+      if (!monthGroups[monthName]) {
+        monthGroups[monthName] = {
+          month: monthName,
+          transactions: []
+        };
+      }
+      
+      monthGroups[monthName].transactions.push(transaction);
+    }
+
+    // Convert to array and sort months in descending order (latest month first)
+    const monthOrder = ["december", "november", "october", "september", "august", "july", "june", "may", "april", "march", "february", "january"];
+    
+    for (let month of monthOrder) {
+      if (monthGroups[month]) {
+        transactionsData.push(monthGroups[month]);
+      }
+    }
+
+    const response = {
+      empId: empIdNum,
+      year: yearNum,
+      baseSalary: employee.baseSalary,
+      transactionsData: transactionsData
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error("Error fetching employee transactions:", error);
+    res.status(500).json({ error: "Failed to fetch employee transactions" });
+  }
+};

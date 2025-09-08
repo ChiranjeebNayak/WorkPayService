@@ -1,5 +1,5 @@
 import express from "express";
-import { applyLeave,getLeaveSummary ,updateLeaveStatus,getLeavesByYear} from "../controllers/leaveContoller.js";
+import { applyLeave,getLeaveSummary ,updateLeaveStatus,getLeavesByYear,getEmployeeLeaveHistory} from "../controllers/leaveContoller.js";
 import {employeeAuth,adminAuth} from "../Middleware/authMiddleware.js"
 const leaveRoutes = express.Router();
 
@@ -13,5 +13,7 @@ leaveRoutes.get("/summary",adminAuth, getLeaveSummary);
 leaveRoutes.post("/update-status",adminAuth, updateLeaveStatus);
 
 leaveRoutes.get("/employee-leaves", employeeAuth,getLeavesByYear);
+
+leaveRoutes.get("/get/employee-leaves",adminAuth,getEmployeeLeaveHistory)
 
 export default leaveRoutes;

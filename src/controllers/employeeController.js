@@ -32,7 +32,7 @@ export const loginEmployee = async (req, res) => {
 export const createEmployee = async (req, res) => {
   try {
     const adminId = req.admin.id; // from adminAuth middleware
-    const { name, phone, email, password, baseSalary, overtimeRate, officeId } = req.body;
+    const { name, phone, email, password, baseSalary, overtimeRate, officeId,joinedDate } = req.body;
 
     if (!name || !phone || !email || !password || !baseSalary || !overtimeRate || !officeId || !adminId) {
       return res.status(400).json({ error: "All required fields must be provided" });
@@ -61,6 +61,7 @@ export const createEmployee = async (req, res) => {
         overtimeRate:Number(overtimeRate),
         officeId:Number(officeId),
         adminId:Number(adminId),
+        joinedDate:new Date(joinedDate)
       },
     });
 
@@ -72,6 +73,7 @@ export const createEmployee = async (req, res) => {
         email: employee.email,
         baseSalary: employee.baseSalary,
         overtimeRate: employee.overtimeRate,
+        joinedDate:employee.joinedDate
       } }
     );
   } catch (error) {
@@ -109,6 +111,8 @@ export const getEmployeeById = async (req, res) => {
       email: employee.email,
       baseSalary: employee.baseSalary,
       overtimeRate: employee.overtimeRate,
+      leaveBalance:employee.leaveBalance,
+      joinedDate:employee.joinedDate
     } });
   } catch (error) {
     console.error("Error fetching employee:", error);
