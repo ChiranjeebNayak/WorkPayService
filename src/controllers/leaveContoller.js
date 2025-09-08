@@ -305,7 +305,7 @@ export const getLeavesByYear = async (req, res) => {
         fromDate: { gte: startOfYear },
         toDate: { lte: endOfYear },
       },
-      orderBy: { fromDate: "asc" },
+      orderBy: { fromDate: "desc" },
     });
 
     res.json({

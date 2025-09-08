@@ -312,6 +312,8 @@ export const getEmployeeDashboard = async (req, res) => {
         name: employee.name,
         phone: employee.phone,
         email: employee.email,
+        leaveBalance:employee.leaveBalance,
+        joinedDate:employee.joinedDate,
         baseSalary: employee.baseSalary,
         overtimeRate: employee.overtimeRate,
         checkinTime: attendance ? formatTimeOnly(attendance.checkInTime) : null,
