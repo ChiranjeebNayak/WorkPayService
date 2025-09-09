@@ -38,10 +38,6 @@ export const handleAttendance = async (req, res) => {
     const todayStartIST = getTodayStartIST();
     const todayEndIST = new Date(todayStartIST.getTime() + 24 * 60 * 60 * 1000);
 
-    // DEBUG: Add these console logs to verify dates
-    console.log("Current IST:", nowIST.toISOString());
-    console.log("Today Start (Date only):", todayStartIST.toISOString());
-    console.log("Today End (Date only):", todayEndIST.toISOString());
 
     // ✅ Fetch office timings
     const office = await prisma.office.findFirst();
@@ -70,7 +66,7 @@ export const handleAttendance = async (req, res) => {
 
     if (type === "checkin") {
       if (attendance) {
-        return res.status(200).json({ 
+        return res.status(400).json({ 
           message: `Employee already checked in today`,
           debugInfo: {
             todayStartIST: todayStartIST.toISOString(),
@@ -100,8 +96,8 @@ export const handleAttendance = async (req, res) => {
         timeZone: "Asia/Kolkata"
       });
 
-      return res.json({ 
-        message: `Check-in ${status} at ${istTimeString}`, 
+      return res.status(200).json({ 
+        message: `Check-in ${status} at ${nowIST}`, 
         attendance,
         debugInfo: {
           storedDate: attendance.date.toISOString(),
@@ -176,7 +172,7 @@ export const handleAttendance = async (req, res) => {
       });
 
       return res.json({ 
-        message: `Check-out done at ${istTimeString}`, 
+        message: `Check-out done at ${nowIST}`, 
         attendance 
       });
     }

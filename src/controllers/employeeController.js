@@ -22,7 +22,7 @@ export const loginEmployee = async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    res.json({ message: `Employee login successful ${employee.name}`, token });
+    res.json({ message: `Employee login successful `, token });
   } catch (error) {
     res.status(500).json({ error: "Failed to login employee", details: error.message });
   }
