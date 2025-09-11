@@ -1,4 +1,10 @@
 import prisma from "../prisma.js";
+import moment from "moment-timezone";
+
+// Helper: convert UTC date to IST string
+const toISTString = (utcDate) => {
+  return moment.utc(utcDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss");
+};
 
 // ✅ Add Transaction API (for admin)
 export const addTransaction = async (req, res) => {
@@ -9,21 +15,20 @@ export const addTransaction = async (req, res) => {
       return res.status(400).json({ error: "empId, amount and type are required" });
     }
 
-    // Format IST (Asia/Kolkata) with local time
+    // Current UTC time
     const nowUTC = new Date();
-    const istOffset = 5.5 * 60 * 60 * 1000; // IST = UTC + 5:30
-    const istDate = new Date(nowUTC.getTime() + istOffset);
 
-    // If type is SALARY, check if already settled this month
+    // If SALARY, check if already settled for current IST month
     if (type === "SALARY") {
-      const monthStart = new Date(istDate.getFullYear(), istDate.getMonth(), 1);
-      const monthEnd = new Date(istDate.getFullYear(), istDate.getMonth() + 1, 1);
+      const istNow = moment.tz(nowUTC, "Asia/Kolkata");
+      const monthStartUTC = istNow.clone().startOf("month").utc().toDate();
+      const monthEndUTC = istNow.clone().endOf("month").utc().toDate();
 
       const existingSalary = await prisma.transaction.findFirst({
         where: {
           empId: Number(empId),
           payType: "SALARY",
-          date: { gte: monthStart, lt: monthEnd }
+          date: { gte: monthStartUTC, lte: monthEndUTC }
         }
       });
 
@@ -34,23 +39,24 @@ export const addTransaction = async (req, res) => {
       }
     }
 
-    // Create transaction record
+    // Create transaction record (store UTC)
     const transaction = await prisma.transaction.create({
       data: {
         empId: Number(empId),
         amount: Number(amount),
         payType: type,
         description: description || null,
-        date: istDate
+        date: nowUTC
       },
-      include: {
-        employee: { select: { id: true, name: true } }
-      }
+      include: { employee: { select: { id: true, name: true } } }
     });
 
     res.json({
       message: "Transaction settled successfully",
-      transaction
+      transaction: {
+        ...transaction,
+        date: toISTString(transaction.date) // Response in IST
+      }
     });
   } catch (error) {
     console.error("Error settling transaction:", error);
@@ -58,10 +64,7 @@ export const addTransaction = async (req, res) => {
   }
 };
 
-
-
-
-// ✅ Get transactions by empId & year (for employee)
+// ✅ Get employee transactions by year (IST-aware)
 export const getEmployeeTransactions = async (req, res) => {
   try {
     const empId = req.employee.id;
@@ -79,132 +82,81 @@ export const getEmployeeTransactions = async (req, res) => {
       select: { baseSalary: true }
     });
 
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth(); // 0-indexed
-    const currentMonthName = now.toLocaleString("default", { month: "long" });
+    if (!employee) return res.status(404).json({ error: "Employee not found" });
 
-    // Get transactions for the requested year
-    const yearStart = new Date(yearNum, 0, 1); // Jan 1 YYYY
-    const yearEnd = new Date(yearNum + 1, 0, 1); // Jan 1 YYYY+1
+    // IST boundaries for year
+    const yearStartUTC = moment.tz(`${year}-01-01 00:00:00`, "Asia/Kolkata").startOf("year").utc().toDate();
+    const yearEndUTC = moment.tz(`${year}-01-01 00:00:00`, "Asia/Kolkata").endOf("year").utc().toDate();
 
-    const requestedYearTransactions = await prisma.transaction.findMany({
-      where: {
-        empId: empIdNum,
-        date: { gte: yearStart, lt: yearEnd }
-      },
+    const transactions = await prisma.transaction.findMany({
+      where: { empId: empIdNum, date: { gte: yearStartUTC, lte: yearEndUTC } },
       orderBy: { date: "asc" }
     });
 
-    // Get current month transactions (always from today's month/year)
-    const currentMonthStart = new Date(currentYear, currentMonth, 1);
-    const currentMonthEnd = new Date(currentYear, currentMonth + 1, 1);
-
-    const currentMonthTransactions = await prisma.transaction.findMany({
-      where: {
-        empId: empIdNum,
-        date: { gte: currentMonthStart, lt: currentMonthEnd }
-      },
-      orderBy: { date: "asc" }
+    // Group by month and convert to IST
+    const transactionsByMonth = {};
+    transactions.forEach(t => {
+      const monthName = moment.utc(t.date).tz("Asia/Kolkata").format("MMMM");
+      if (!transactionsByMonth[monthName]) transactionsByMonth[monthName] = [];
+      transactionsByMonth[monthName].push({ ...t, date: toISTString(t.date) });
     });
 
-    let response = {
+    const currentMonthName = moment.tz(new Date(), "Asia/Kolkata").format("MMMM");
+
+    res.json({
       year: yearNum,
       currentTransaction: {
         month: currentMonthName,
         baseSalary: employee.baseSalary,
-        transactions: currentMonthTransactions
+        transactions: transactionsByMonth[currentMonthName] || []
       },
       baseSalary: employee.baseSalary,
-      previousTransaction: []
-    };
-
-    // Group requested year transactions into previous transactions
-    for (let t of requestedYearTransactions) {
-      const tDate = new Date(t.date);
-      const tYear = tDate.getFullYear();
-      const tMonth = tDate.getMonth(); // 0-indexed
-      const monthName = tDate.toLocaleString("default", { month: "long" });
-
-      // Skip if this transaction is from current month/year (already in currentTransaction)
-      if (tYear === currentYear && tMonth === currentMonth) {
-        continue;
-      }
-
-      // Add to previous months
-      let prev = response.previousTransaction.find(p => p.month === monthName);
-      if (!prev) {
-        prev = { 
-          month: monthName, 
-          baseSalary: employee.baseSalary, 
-          transactions: [] 
-        };
-        response.previousTransaction.push(prev);
-      }
-      prev.transactions.push(t);
-    }
-
-    res.json(response);
+      previousTransaction: Object.entries(transactionsByMonth)
+        .filter(([m]) => m !== currentMonthName)
+        .map(([month, txs]) => ({ month, baseSalary: employee.baseSalary, transactions: txs }))
+    });
   } catch (error) {
     console.error("Error fetching employee transactions:", error);
     res.status(500).json({ error: "Failed to fetch employee transactions" });
   }
 };
 
-
-
-
-// ✅ Get all transactions for all employees by month & year (for admin)
+// ✅ Get monthly transactions for all employees (IST-aware)
 export const getMonthlyTransactions = async (req, res) => {
   try {
     const { month, year } = req.query;
+    if (!month || !year) return res.status(400).json({ error: "month and year are required" });
 
-    if (!month || !year) {
-      return res.status(400).json({ error: "month and year are required" });
-    }
-
-    const monthNum = Number(month) - 1; // 0-indexed
+    const monthNum = Number(month);
     const yearNum = Number(year);
 
-    const monthStart = new Date(yearNum, monthNum, 1);
-    const monthEnd = new Date(yearNum, monthNum + 1, 1);
+    const monthStartUTC = moment.tz(`${yearNum}-${monthNum}-01 00:00:00`, "Asia/Kolkata").startOf("month").utc().toDate();
+    const monthEndUTC = moment.tz(`${yearNum}-${monthNum}-01 00:00:00`, "Asia/Kolkata").endOf("month").utc().toDate();
 
     const transactions = await prisma.transaction.findMany({
-      where: {
-        date: { gte: monthStart, lt: monthEnd } 
-      },
+      where: { date: { gte: monthStartUTC, lte: monthEndUTC } },
       orderBy: { date: "asc" },
-      include: {
-        employee: { select: { id: true, name: true,phone:true,baseSalary:true } }
-      }
+      include: { employee: { select: { id: true, name: true, phone: true, baseSalary: true } } }
     });
 
-    // Group transactions by employee
     const paymentsMap = new Map();
-
-    for (let t of transactions) {
+    transactions.forEach(t => {
       if (!paymentsMap.has(t.empId)) {
         paymentsMap.set(t.empId, {
           empId: t.empId,
           name: t.employee.name,
-          phone:t.employee.phone,
-          baseSalary:t.employee.baseSalary,
+          phone: t.employee.phone,
+          baseSalary: t.employee.baseSalary,
           transactions: []
         });
       }
-      paymentsMap.get(t.empId).transactions.push({
-        id: t.id,
-        amount: t.amount,
-        date: t.date,
-        payType: t.payType,
-        description: t.description
-      });
-    }
+      paymentsMap.get(t.empId).transactions.push({ ...t, date: toISTString(t.date) });
+    });
 
     const payments = Array.from(paymentsMap.values());
 
     res.json({
-      month: monthStart.toLocaleString("default", { month: "long" }),
+      month: moment.tz(monthStartUTC, "Asia/Kolkata").format("MMMM"),
       year: yearNum,
       payments
     });
@@ -214,83 +166,50 @@ export const getMonthlyTransactions = async (req, res) => {
   }
 };
 
-
-
-
-// ✅ Get transactions by empId & year (from query parameters)
+// ✅ Get employee transactions for admin by year (IST-aware)
 export const getEmployeeTransactionsAdmin = async (req, res) => {
   try {
     const { empId, year } = req.query;
-
-    if (!empId || !year) {
-      return res.status(400).json({ error: "empId and year are required" });
-    }
+    if (!empId || !year) return res.status(400).json({ error: "empId and year are required" });
 
     const empIdNum = Number(empId);
     const yearNum = Number(year);
 
-    // Validate empId and year are valid numbers
-    if (isNaN(empIdNum) || isNaN(yearNum)) {
-      return res.status(400).json({ error: "empId and year must be valid numbers" });
-    }
-
-    // Get employee details
     const employee = await prisma.employee.findUnique({
       where: { id: empIdNum },
       select: { baseSalary: true }
     });
+    if (!employee) return res.status(404).json({ error: "Employee not found" });
 
-    if (!employee) {
-      return res.status(404).json({ error: "Employee not found" });
-    }
-
-    // Get transactions for the requested year
-    const yearStart = new Date(yearNum, 0, 1); // Jan 1 YYYY
-    const yearEnd = new Date(yearNum + 1, 0, 1); // Jan 1 YYYY+1
+    const yearStartUTC = moment.tz(`${yearNum}-01-01 00:00:00`, "Asia/Kolkata").startOf("year").utc().toDate();
+    const yearEndUTC = moment.tz(`${yearNum}-01-01 00:00:00`, "Asia/Kolkata").endOf("year").utc().toDate();
 
     const transactions = await prisma.transaction.findMany({
-      where: {
-        empId: empIdNum,
-        date: { gte: yearStart, lt: yearEnd }
-      },
-      orderBy: { date: "desc" } // Latest transactions first
+      where: { empId: empIdNum, date: { gte: yearStartUTC, lte: yearEndUTC } },
+      orderBy: { date: "desc" }
     });
 
-    // Group transactions by month
-    const transactionsData = [];
-    const monthGroups = {};
+    // Group by month
+    const transactionsData = {};
+    transactions.forEach(t => {
+      const monthName = moment.utc(t.date).tz("Asia/Kolkata").format("MMMM");
+      if (!transactionsData[monthName]) transactionsData[monthName] = [];
+      transactionsData[monthName].push({ ...t, date: toISTString(t.date) });
+    });
 
-    for (let transaction of transactions) {
-      const transactionDate = new Date(transaction.date);
-      const monthName = transactionDate.toLocaleString("default", { month: "long" }).toLowerCase();
-      
-      if (!monthGroups[monthName]) {
-        monthGroups[monthName] = {
-          month: monthName,
-          transactions: []
-        };
-      }
-      
-      monthGroups[monthName].transactions.push(transaction);
-    }
+    // Sort months in descending order
+    const monthOrder = ["December","November","October","September","August","July","June","May","April","March","February","January"];
+    const sortedTransactions = monthOrder
+      .filter(m => transactionsData[m])
+      .map(m => ({ month: m, transactions: transactionsData[m] }));
 
-    // Convert to array and sort months in descending order (latest month first)
-    const monthOrder = ["december", "november", "october", "september", "august", "july", "june", "may", "april", "march", "february", "january"];
-    
-    for (let month of monthOrder) {
-      if (monthGroups[month]) {
-        transactionsData.push(monthGroups[month]);
-      }
-    }
-
-    const response = {
+    res.json({
       empId: empIdNum,
       year: yearNum,
       baseSalary: employee.baseSalary,
-      transactionsData: transactionsData
-    };
+      transactionsData: sortedTransactions
+    });
 
-    res.json(response);
   } catch (error) {
     console.error("Error fetching employee transactions:", error);
     res.status(500).json({ error: "Failed to fetch employee transactions" });

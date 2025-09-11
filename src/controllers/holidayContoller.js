@@ -1,4 +1,5 @@
 import prisma from "../prisma.js";
+import moment from "moment-timezone";
 
 // ✅ Get holidays for current year, grouped by month
 export const getHolidaysByYear = async (req, res) => {
@@ -24,20 +25,17 @@ export const getHolidaysByYear = async (req, res) => {
     const grouped = holidays.reduce((acc, holiday) => {
       const monthName = holiday.date.toLocaleString("en-US", { month: "long" });
 
-      if (!acc[monthName]) {
-        acc[monthName] = [];
-      }
+      if (!acc[monthName]) acc[monthName] = [];
 
       acc[monthName].push({
         id: holiday.id,
-        date: holiday.date,
+        date: holiday.date, // stored with time 00:00:00
         description: holiday.description,
       });
 
       return acc;
     }, {});
 
-    // Convert to desired response format
     const response = Object.keys(grouped).map((month) => ({
       month,
       holidays: grouped[month],
@@ -50,7 +48,7 @@ export const getHolidaysByYear = async (req, res) => {
   }
 };
 
-// ✅ Add holiday
+// Add holiday
 export const addHoliday = async (req, res) => {
   try {
     const { description, date } = req.body;
@@ -59,19 +57,37 @@ export const addHoliday = async (req, res) => {
       return res.status(400).json({ error: "description and date are required" });
     }
 
+    // Ensure only YYYY-MM-DD is taken (drop any accidental time)
+    const onlyDate = date.split("T")[0];
+
+    // Build valid Date at UTC midnight
+    const holidayDate = new Date(`${onlyDate}T00:00:00Z`);
+
+    if (isNaN(holidayDate)) {
+      return res.status(400).json({ error: "Invalid date format, expected YYYY-MM-DD" });
+    }
+
     const holiday = await prisma.holiday.create({
       data: {
         description,
-        date: new Date(date),
+        date: holidayDate,
       },
     });
 
-    res.json({ message: "Holiday added successfully", holiday });
+    res.json({
+      message: "Holiday added successfully",
+      holiday: {
+        ...holiday,
+        date: onlyDate, // return same YYYY-MM-DD back
+      },
+    });
   } catch (error) {
     console.error("Error adding holiday:", error);
     res.status(500).json({ error: "Failed to add holiday" });
   }
 };
+
+
 
 // ✅ Delete holiday
 export const deleteHoliday = async (req, res) => {

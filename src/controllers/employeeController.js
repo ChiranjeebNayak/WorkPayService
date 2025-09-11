@@ -1,7 +1,7 @@
 import prisma from "../prisma.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-
+import moment from "moment-timezone";
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
@@ -264,24 +264,24 @@ export const getEmployeeByPhone = async (req, res) => {
 
 
 
-// Helper function to format time from datetime to readable format
-const formatTimeOnly = (datetime) => {
+// ✅ Helper: format only time in IST from UTC datetime
+const formatTimeOnlyIST = (datetime) => {
   if (!datetime) return null;
-  return new Date(datetime).toLocaleTimeString("en-IN", {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: "UTC"
-  });
+  return moment.utc(datetime).tz("Asia/Kolkata").format("hh:mm A");
 };
 
-// Get Employee Dashboard Details
+// ✅ Helper: format full datetime in IST
+const formatDateTimeIST = (datetime) => {
+  if (!datetime) return null;
+  return moment.utc(datetime).tz("Asia/Kolkata").format("YYYY-MM-DD hh:mm A");
+};
+
+// ✅ Get Employee Dashboard Details
 export const getEmployeeDashboard = async (req, res) => {
   try {
-    // employeeId from JWT middleware (req.employee.id)
     const employeeId = req.employee.id;
 
-    // Fetch employee with office
+    // Fetch employee with office details
     const employee = await prisma.employee.findUnique({
       where: { id: employeeId },
       include: { office: true },
@@ -291,40 +291,38 @@ export const getEmployeeDashboard = async (req, res) => {
       return res.status(404).json({ error: "Employee not found" });
     }
 
-    // Get today's date start & end
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    // ✅ Get IST start & end of today, convert to UTC for DB query
+    const todayStartUTC = moment.tz("Asia/Kolkata").startOf("day").utc().toDate();
+    const todayEndUTC = moment.tz("Asia/Kolkata").endOf("day").utc().toDate();
 
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
-
-    // Find today's attendance
+    // ✅ Find today's attendance in UTC
     const attendance = await prisma.attendance.findFirst({
       where: {
         empId: employeeId,
-        date: { gte: todayStart, lte: todayEnd },
+        date: { gte: todayStartUTC, lte: todayEndUTC },
       },
     });
 
+    // ✅ Build response with IST conversion
     const response = {
       employeeDetails: {
         id: employee.id,
         name: employee.name,
         phone: employee.phone,
         email: employee.email,
-        leaveBalance:employee.leaveBalance,
-        joinedDate:employee.joinedDate,
+        leaveBalance: employee.leaveBalance,
+        joinedDate: formatDateTimeIST(employee.joinedDate), // IST
         baseSalary: employee.baseSalary,
         overtimeRate: employee.overtimeRate,
-        checkinTime: attendance ? formatTimeOnly(attendance.checkInTime) : null,
-        checkoutTime: attendance ? formatTimeOnly(attendance.checkOutTime) : null,
+        checkinTime: attendance ? formatTimeOnlyIST(attendance.checkInTime) : null,
+        checkoutTime: attendance ? formatTimeOnlyIST(attendance.checkOutTime) : null,
         overtime: attendance ? attendance.overTime : null,
       },
       officeDetails: {
         latitude: employee.office.latitude,
         longitude: employee.office.longitude,
-        checkin: formatTimeOnly(employee.office.checkin), // This will show "09:00 AM"
-        checkout: formatTimeOnly(employee.office.checkout), // This will show "06:00 PM"
+        checkin: formatTimeOnlyIST(employee.office.checkin),
+        checkout: formatTimeOnlyIST(employee.office.checkout),
         breakTime: employee.office.breakTime, // in minutes
       },
     };
