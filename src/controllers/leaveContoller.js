@@ -2,16 +2,16 @@ import prisma from "../prisma.js";
 import moment from "moment-timezone";
 
 // ---------------- Helper ----------------
-const toUTC = (datetime) => moment.tz(datetime, "Asia/Kolkata").utc().toDate();
+const toUTC = (datetime) =>
+  moment.tz(datetime, "Asia/Kolkata").utc().startOf("day").toDate();
 const formatDateIST = (datetime) =>
   moment.utc(datetime).tz("Asia/Kolkata").format("YYYY-MM-DD");
-
 
 // ---------------- Apply Leave ----------------
 export const applyLeave = async (req, res) => {
   try {
     const empId = req.employee.id;
-    const {  reason, startDate, endDate } = req.body;
+    const { reason, startDate, endDate } = req.body;
 
     if (!empId || !reason || !startDate || !endDate) {
       return res
@@ -23,18 +23,40 @@ export const applyLeave = async (req, res) => {
     const toDateUTC = toUTC(endDate);
 
     if (fromDateUTC > toDateUTC) {
-      return res.status(400).json({ error: "Start date cannot be after end date" });
+      return res
+        .status(400)
+        .json({ error: "Start date cannot be after end date" });
     }
 
-    // Overlapping leave check
+    // 1️⃣ Overlapping leave check (your existing logic kept)
     const existingLeaves = await prisma.leave.findMany({
       where: {
         empId: Number(empId),
         OR: [
-          { AND: [{ fromDate: { lte: fromDateUTC } }, { toDate: { gte: fromDateUTC } }] },
-          { AND: [{ fromDate: { lte: toDateUTC } }, { toDate: { gte: toDateUTC } }] },
-          { AND: [{ fromDate: { gte: fromDateUTC } }, { toDate: { lte: toDateUTC } }] },
-          { AND: [{ fromDate: { lte: fromDateUTC } }, { toDate: { gte: toDateUTC } }] },
+          {
+            AND: [
+              { fromDate: { lte: fromDateUTC } },
+              { toDate: { gte: fromDateUTC } },
+            ],
+          },
+          {
+            AND: [
+              { fromDate: { lte: toDateUTC } },
+              { toDate: { gte: toDateUTC } },
+            ],
+          },
+          {
+            AND: [
+              { fromDate: { gte: fromDateUTC } },
+              { toDate: { lte: toDateUTC } },
+            ],
+          },
+          {
+            AND: [
+              { fromDate: { lte: fromDateUTC } },
+              { toDate: { gte: toDateUTC } },
+            ],
+          },
         ],
       },
     });
@@ -51,59 +73,95 @@ export const applyLeave = async (req, res) => {
       });
     }
 
-    // ✅ Total days (fixed with moment.diff)
-    const totalDays = moment(toDateUTC).diff(moment(fromDateUTC), "days") + 1;
+    // 2️⃣ Fetch holidays in range
+    const holidays = await prisma.holiday.findMany({
+      where: {
+        date: {
+          gte: fromDateUTC,
+          lte: toDateUTC,
+        },
+      },
+      select: { date: true },
+    });
+    const holidayDates = holidays.map((h) => formatDateIST(h.date));
 
-    // Employee leave balance
+    // Reject if start or end is a holiday
+    if (
+      holidayDates.includes(formatDateIST(fromDateUTC)) ||
+      holidayDates.includes(formatDateIST(toDateUTC))
+    ) {
+      return res
+        .status(400)
+        .json({ error: "Start date or end date cannot be a holiday" });
+    }
+
+    // 3️⃣ Build working days list (exclude holidays in between)
+    let workingDates = [];
+    let cursor = moment(fromDateUTC);
+    while (cursor <= moment(toDateUTC)) {
+      const dateStr = cursor.format("YYYY-MM-DD");
+      if (!holidayDates.includes(dateStr)) {
+        workingDates.push(toUTC(dateStr));
+      }
+      cursor.add(1, "day");
+    }
+    const totalWorkingDays = workingDates.length;
+
+    if (totalWorkingDays <= 0) {
+      return res
+        .status(400)
+        .json({ error: "No working days left after excluding holidays" });
+    }
+
+    // 4️⃣ Fetch employee leave balance
     const employee = await prisma.employee.findUnique({
       where: { id: Number(empId) },
       select: { leaveBalance: true },
     });
 
-    if (!employee) return res.status(404).json({ error: "Employee not found" });
+    if (!employee)
+      return res.status(404).json({ error: "Employee not found" });
 
     let leaveApplications = [];
 
+    // 5️⃣ Apply leave logic
     if (employee.leaveBalance <= 0) {
+      // All unpaid
       const leave = await prisma.leave.create({
         data: {
           empId: Number(empId),
           reason,
-          fromDate: fromDateUTC,
-          toDate: toDateUTC,
-          totalDays,
+          fromDate: workingDates[0],
+          toDate: workingDates[workingDates.length - 1],
+          totalDays: totalWorkingDays,
           type: "UNPAID",
         },
       });
       leaveApplications.push(leave);
-    } else if (employee.leaveBalance >= totalDays) {
+    } else if (employee.leaveBalance >= totalWorkingDays) {
+      // All paid
       const leave = await prisma.leave.create({
         data: {
           empId: Number(empId),
           reason,
-          fromDate: fromDateUTC,
-          toDate: toDateUTC,
-          totalDays,
+          fromDate: workingDates[0],
+          toDate: workingDates[workingDates.length - 1],
+          totalDays: totalWorkingDays,
           type: "PAID",
         },
       });
       leaveApplications.push(leave);
     } else {
+      // Split between paid and unpaid
       const paidDays = employee.leaveBalance;
-      const unpaidDays = totalDays - paidDays;
-
-      const paidToDateUTC = new Date(fromDateUTC);
-      paidToDateUTC.setDate(fromDateUTC.getDate() + paidDays - 1);
-
-      const unpaidFromDateUTC = new Date(paidToDateUTC);
-      unpaidFromDateUTC.setDate(unpaidFromDateUTC.getDate() + 1);
+      const unpaidDays = totalWorkingDays - paidDays;
 
       const paidLeave = await prisma.leave.create({
         data: {
           empId: Number(empId),
           reason,
-          fromDate: fromDateUTC,
-          toDate: paidToDateUTC,
+          fromDate: workingDates[0],
+          toDate: workingDates[paidDays - 1],
           totalDays: paidDays,
           type: "PAID",
         },
@@ -113,8 +171,8 @@ export const applyLeave = async (req, res) => {
         data: {
           empId: Number(empId),
           reason,
-          fromDate: unpaidFromDateUTC,
-          toDate: toDateUTC,
+          fromDate: workingDates[paidDays],
+          toDate: workingDates[workingDates.length - 1],
           totalDays: unpaidDays,
           type: "UNPAID",
         },
@@ -123,6 +181,7 @@ export const applyLeave = async (req, res) => {
       leaveApplications.push(paidLeave, unpaidLeave);
     }
 
+    // ✅ Response unchanged
     res.json({
       message: "Leave application submitted",
       applications: leaveApplications.map((l) => ({
@@ -133,9 +192,13 @@ export const applyLeave = async (req, res) => {
     });
   } catch (error) {
     console.error("Error applying leave:", error);
-    res.status(500).json({ error: "Failed to apply leave", details: error.message });
+    res.status(500).json({
+      error: "Failed to apply leave",
+      details: error.message,
+    });
   }
 };
+
 
 // ---------------- Get Leave Summary ----------------
 export const getLeaveSummary = async (req, res) => {
