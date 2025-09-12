@@ -5,13 +5,13 @@ import moment from "moment-timezone";
 const toUTC = (datetime) => moment.tz(datetime, "Asia/Kolkata").utc().toDate();
 const formatDateIST = (datetime) =>
   moment.utc(datetime).tz("Asia/Kolkata").format("YYYY-MM-DD");
-const formatDateTimeIST = (datetime) =>
-  moment.utc(datetime).tz("Asia/Kolkata").format("YYYY-MM-DD hh:mm A");
+
 
 // ---------------- Apply Leave ----------------
 export const applyLeave = async (req, res) => {
   try {
-    const { empId, reason, startDate, endDate } = req.body;
+    const empId = req.employee.id;
+    const {  reason, startDate, endDate } = req.body;
 
     if (!empId || !reason || !startDate || !endDate) {
       return res
