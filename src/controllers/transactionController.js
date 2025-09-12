@@ -122,6 +122,7 @@ export const getEmployeeTransactions = async (req, res) => {
 };
 
 // ✅ Get monthly transactions for all employees (IST-aware)
+// Current month: Show ALL employees | Previous months: Show only employees with transactions
 export const getMonthlyTransactions = async (req, res) => {
   try {
     const { month, year } = req.query;
@@ -130,34 +131,78 @@ export const getMonthlyTransactions = async (req, res) => {
     const monthNum = Number(month);
     const yearNum = Number(year);
 
-    const monthStartUTC = moment.tz(`${yearNum}-${monthNum}-01 00:00:00`, "Asia/Kolkata").startOf("month").utc().toDate();
-    const monthEndUTC = moment.tz(`${yearNum}-${monthNum}-01 00:00:00`, "Asia/Kolkata").endOf("month").utc().toDate();
+    const monthStartUTC = moment.tz([yearNum, monthNum - 1, 1], "Asia/Kolkata").startOf("month").utc().toDate();
+    const monthEndUTC = moment.tz([yearNum, monthNum - 1, 1], "Asia/Kolkata").endOf("month").utc().toDate();
 
+    // Check if the requested month is the current month (in IST)
+    const currentMonthIST = moment.tz(new Date(), "Asia/Kolkata");
+    const requestedMonthIST = moment.tz([yearNum, monthNum - 1, 1], "Asia/Kolkata");
+    const isCurrentMonth = currentMonthIST.isSame(requestedMonthIST, 'month') && currentMonthIST.isSame(requestedMonthIST, 'year');
+
+    // Get transactions for this month
     const transactions = await prisma.transaction.findMany({
       where: { date: { gte: monthStartUTC, lte: monthEndUTC } },
       orderBy: { date: "asc" },
       include: { employee: { select: { id: true, name: true, phone: true, baseSalary: true } } }
     });
 
-    const paymentsMap = new Map();
-    transactions.forEach(t => {
-      if (!paymentsMap.has(t.empId)) {
-        paymentsMap.set(t.empId, {
-          empId: t.empId,
-          name: t.employee.name,
-          phone: t.employee.phone,
-          baseSalary: t.employee.baseSalary,
-          transactions: []
-        });
-      }
-      paymentsMap.get(t.empId).transactions.push({ ...t, date: toISTString(t.date) });
-    });
+    let payments = [];
 
-    const payments = Array.from(paymentsMap.values());
+    if (isCurrentMonth) {
+      // CURRENT MONTH: Show ALL employees (even those without transactions)
+      const allEmployees = await prisma.employee.findMany({
+        select: { id: true, name: true, phone: true, baseSalary: true }
+      });
+
+      payments = allEmployees.map(employee => {
+        // Find all transactions for this employee in the given month
+        const employeeTransactions = transactions
+          .filter(t => t.empId === employee.id)
+          .map(t => ({
+            id: t.id,
+            amount: t.amount,
+            date: t.date,
+            payType: t.payType,
+            description: t.description
+          }));
+
+        return {
+          empId: employee.id,
+          name: employee.name,
+          phone: employee.phone,
+          baseSalary: employee.baseSalary,
+          transactions: employeeTransactions // Will be empty array [] if no transactions
+        };
+      });
+    } else {
+      // PREVIOUS MONTHS: Show only employees with transactions
+      const paymentsMap = new Map();
+      transactions.forEach(t => {
+        if (!paymentsMap.has(t.empId)) {
+          paymentsMap.set(t.empId, {
+            empId: t.empId,
+            name: t.employee.name,
+            phone: t.employee.phone,
+            baseSalary: t.employee.baseSalary,
+            transactions: []
+          });
+        }
+        paymentsMap.get(t.empId).transactions.push({
+          id: t.id,
+          amount: t.amount,
+          date: t.date,
+          payType: t.payType,
+          description: t.description
+        });
+      });
+
+      payments = Array.from(paymentsMap.values());
+    }
 
     res.json({
       month: moment.tz(monthStartUTC, "Asia/Kolkata").format("MMMM"),
       year: yearNum,
+      isCurrentMonth, // Include this info in response for debugging
       payments
     });
   } catch (error) {
@@ -181,8 +226,8 @@ export const getEmployeeTransactionsAdmin = async (req, res) => {
     });
     if (!employee) return res.status(404).json({ error: "Employee not found" });
 
-    const yearStartUTC = moment.tz(`${yearNum}-01-01 00:00:00`, "Asia/Kolkata").startOf("year").utc().toDate();
-    const yearEndUTC = moment.tz(`${yearNum}-01-01 00:00:00`, "Asia/Kolkata").endOf("year").utc().toDate();
+    const yearStartUTC = moment.tz([yearNum, 0, 1], "Asia/Kolkata").startOf("year").utc().toDate();
+    const yearEndUTC = moment.tz([yearNum, 0, 1], "Asia/Kolkata").endOf("year").utc().toDate();
 
     const transactions = await prisma.transaction.findMany({
       where: { empId: empIdNum, date: { gte: yearStartUTC, lte: yearEndUTC } },
