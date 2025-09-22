@@ -55,99 +55,6 @@ async function main() {
     },
   });
 
-  // 📅 Attendance from Aug 1 → Sept 16
-  const startDate = moment("2025-08-01");
-  const endDate = moment("2025-09-16");
-  let monthlyOvertimeHours = 0;
-
-  for (let d = startDate.clone(); d.isSameOrBefore(endDate); d.add(1, "day")) {
-    // Skip Sundays
-    if (d.day() === 0) continue;
-
-    // Random leave (2 total)
-    if (Math.random() < 0.025) {
-      await prisma.leave.create({
-        data: {
-          empId: employee.id,
-          reason: "Personal work",
-          fromDate: d.toDate(),
-          toDate: d.toDate(),
-          totalDays: 1,
-          type: "PAID",
-          status: "APPROVED",
-        },
-      });
-      continue;
-    }
-
-    // Workday
-    const checkIn = d.clone().hour(9).minute(10).toDate();
-    const checkOut = d.clone().hour(18).minute(15).toDate();
-    const overtime = Math.random() < 0.2 ? 2 : 0;
-
-    if (d.month() === 7) {
-      // Aug (month index 7)
-      monthlyOvertimeHours += overtime;
-    }
-
-    await prisma.attendance.create({
-      data: {
-        empId: employee.id,
-        date: d.toDate(),
-        checkInTime: checkIn,
-        checkOutTime: checkOut,
-        overTime: overtime,
-        status: "PRESENT",
-      },
-    });
-  }
-
-  // 💰 Salary ONLY for August (completed month)
-  await prisma.transaction.create({
-    data: {
-      empId: employee.id,
-      amount: 30000,
-      date: moment("2025-08-31").endOf("day").toDate(),
-      payType: "SALARY",
-      description: "Salary for August 2025",
-    },
-  });
-
-  // 💵 Overtime for August
-  if (monthlyOvertimeHours > 0) {
-    await prisma.transaction.create({
-      data: {
-        empId: employee.id,
-        amount: monthlyOvertimeHours * 200,
-        date: moment("2025-08-31").endOf("day").toDate(),
-        payType: "OVERTIME",
-        description: `${monthlyOvertimeHours} hrs overtime for August 2025`,
-      },
-    });
-  }
-
-  // 🔻 Deduction for August
-  await prisma.transaction.create({
-    data: {
-      empId: employee.id,
-      amount: -500,
-      date: moment("2025-08-31").endOf("day").toDate(),
-      payType: "DEDUCTION",
-      description: "Late coming fine for August 2025",
-    },
-  });
-
-  // 💳 Advance Payment in September
-  await prisma.transaction.create({
-    data: {
-      empId: employee.id,
-      amount: 5000,
-      date: moment("2025-09-05").toDate(),
-      payType: "ADVANCE",
-      description: "Advance payment for September 2025",
-    },
-  });
-
   // 🎉 Holidays
   await prisma.holiday.createMany({
     data: [
@@ -162,7 +69,196 @@ async function main() {
     ],
   });
 
-  console.log("✅ Seed data inserted (Aug 1 → Sept 16, with salary for Aug only).");
+  // ------------------------- JULY -------------------------
+  const julyStart = moment("2025-07-01");
+  const julyEnd = moment("2025-07-31");
+
+  for (let d = julyStart.clone(); d.isSameOrBefore(julyEnd); d.add(1, "day")) {
+
+    const checkIn = d.clone().hour(9).minute(5).toDate();
+    const checkOut = d.clone().hour(17).minute(50).toDate();
+    const overtimeHours = Math.random() < 0.3 ? Math.floor(Math.random() * 3) : 0; // 0–2 hrs
+    const overtimeMinutes = overtimeHours * 60;
+
+    await prisma.attendance.create({
+      data: {
+        empId: employee.id,
+        date: d.toDate(),
+        checkInTime: checkIn,
+        checkOutTime: checkOut,
+        overTime: overtimeMinutes,
+        status: "PRESENT",
+      },
+    });
+
+    if (overtimeMinutes > 0) {
+      await prisma.transaction.create({
+        data: {
+          empId: employee.id,
+          amount: (overtimeMinutes / 60) * 190, // July overtime rate
+          date: d.toDate(),
+          payType: "OVERTIME",
+          description: `${overtimeMinutes} mins overtime on ${d.format("YYYY-MM-DD")}`,
+        },
+      });
+    }
+  }
+
+  // Salary & Deduction for July
+  await prisma.transaction.create({
+    data: {
+      empId: employee.id,
+      amount: 29500,
+      date: moment("2025-07-31").endOf("day").toDate(),
+      payType: "SALARY",
+      description: "Salary for July 2025",
+    },
+  });
+
+  await prisma.transaction.create({
+    data: {
+      empId: employee.id,
+      amount: 600,
+      date: moment("2025-07-31").endOf("day").toDate(),
+      payType: "DEDUCTION",
+      description: "Late coming fine for July 2025",
+    },
+  });
+
+  // ------------------------- AUGUST -------------------------
+  const augStart = moment("2025-08-01");
+  const augEnd = moment("2025-08-31");
+
+  for (let d = augStart.clone(); d.isSameOrBefore(augEnd); d.add(1, "day")) {
+
+
+    // Random leave
+    if (Math.random() < 0.025) {
+      await prisma.leave.create({
+        data: {
+          empId: employee.id,
+          reason: "Sister's wedding",
+          fromDate: d.toDate(),
+          toDate: d.toDate(),
+          totalDays: 1,
+          type: "PAID",
+          status: "APPROVED",
+        },
+      });
+      continue;
+    }
+
+    const checkIn = d.clone().hour(9).minute(10).toDate();
+    const checkOut = d.clone().hour(18).minute(15).toDate();
+    const overtimeHours = Math.random() < 0.2 ? Math.floor(Math.random() * 3) : 0;
+    const overtimeMinutes = overtimeHours * 60;
+
+    await prisma.attendance.create({
+      data: {
+        empId: employee.id,
+        date: d.toDate(),
+        checkInTime: checkIn,
+        checkOutTime: checkOut,
+        overTime: overtimeMinutes,
+        status: "PRESENT",
+      },
+    });
+
+    if (overtimeMinutes > 0) {
+      await prisma.transaction.create({
+        data: {
+          empId: employee.id,
+          amount: (overtimeMinutes / 60) * 200, // August rate
+          date: d.toDate(),
+          payType: "OVERTIME",
+          description: `${overtimeMinutes} mins overtime on ${d.format("YYYY-MM-DD")}`,
+        },
+      });
+    }
+  }
+
+  // Salary & Deduction for August
+  await prisma.transaction.create({
+    data: {
+      empId: employee.id,
+      amount: 30000,
+      date: moment("2025-08-31").endOf("day").toDate(),
+      payType: "SALARY",
+      description: "Salary for August 2025",
+    },
+  });
+
+  await prisma.transaction.create({
+    data: {
+      empId: employee.id,
+      amount: 500,
+      date: moment("2025-08-31").endOf("day").toDate(),
+      payType: "DEDUCTION",
+      description: "Late coming fine for August 2025",
+    },
+  });
+
+  // ------------------------- SEPTEMBER (Partial Month) -------------------------
+  const sepStart = moment("2025-09-01");
+  const sepEnd = moment("2025-09-19"); // can adjust to current day
+
+  for (let d = sepStart.clone(); d.isSameOrBefore(sepEnd); d.add(1, "day")) {
+
+
+    const checkIn = d.clone().hour(9).minute(10).toDate();
+    const checkOut = d.clone().hour(18).minute(0).toDate();
+    const overtimeHours = Math.random() < 0.25 ? Math.floor(Math.random() * 3) : 0;
+    const overtimeMinutes = overtimeHours * 60;
+
+    await prisma.attendance.create({
+      data: {
+        empId: employee.id,
+        date: d.toDate(),
+        checkInTime: checkIn,
+        checkOutTime: checkOut,
+        overTime: overtimeMinutes,
+        status: "PRESENT",
+      },
+    });
+
+    if (overtimeMinutes > 0) {
+      await prisma.transaction.create({
+        data: {
+          empId: employee.id,
+          amount: (overtimeMinutes / 60) * 200,
+          date: d.toDate(),
+          payType: "OVERTIME",
+          description: `${overtimeMinutes} mins overtime on ${d.format("YYYY-MM-DD")}`,
+        },
+      });
+    }
+
+    // Random small deduction
+    if (Math.random() < 0.1) {
+      await prisma.transaction.create({
+        data: {
+          empId: employee.id,
+          amount: 100,
+          date: d.toDate(),
+          payType: "DEDUCTION",
+          description: `Late coming fine on ${d.format("YYYY-MM-DD")}`,
+        },
+      });
+    }
+  }
+
+  // Advance Payment in September
+  await prisma.transaction.create({
+    data: {
+      empId: employee.id,
+      amount: 5000,
+      date: moment("2025-09-05").toDate(),
+      payType: "ADVANCE",
+      description: "Advance payment for September 2025",
+    },
+  });
+
+  console.log("✅ Seed data inserted (July, August & September).");
 }
 
 main()

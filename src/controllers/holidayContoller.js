@@ -67,6 +67,23 @@ export const addHoliday = async (req, res) => {
       return res.status(400).json({ error: "Invalid date format, expected YYYY-MM-DD" });
     }
 
+    // Check if holiday already exists on this date
+    const existingHoliday = await prisma.holiday.findFirst({
+      where: {
+        date: holidayDate
+      }
+    });
+
+    if (existingHoliday) {
+      return res.status(400).json({ 
+        error: "A holiday already exists on this date",
+        existing: {
+          ...existingHoliday,
+          date: onlyDate
+        }
+      });
+    }
+
     const holiday = await prisma.holiday.create({
       data: {
         description,
