@@ -166,13 +166,35 @@ export const getEmployeeAttendanceByMonth = async (req, res) => {
     // Create date string in ISO format
     const dateString = `${year}-${paddedMonth}-01T00:00:00+05:30`;
 
+    // Get current date in IST
+    const currentDateIST = moment.tz("Asia/Kolkata");
+    const currentMonth = currentDateIST.month() + 1; // moment months are 0-indexed
+    const currentYear = currentDateIST.year();
+
+    // Check if requested month/year is current month/year
+    const isCurrentMonth = (Number(month) === currentMonth && Number(year) === currentYear);
+
     // 1. Compute IST month start and end
     const monthStartIST = moment.tz(dateString, "Asia/Kolkata").startOf("month");
-    const monthEndIST = monthStartIST.clone().endOf("month");
+    let monthEndIST = monthStartIST.clone().endOf("month");
+
+    // If it's current month, limit end date to today
+    if (isCurrentMonth) {
+      const todayEndIST = currentDateIST.clone().endOf("day");
+      monthEndIST = todayEndIST; // Use today's end instead of month end
+      console.log("DEBUG - Current month detected, limiting to today");
+      console.log("DEBUG - Month end changed from full month to:", monthEndIST.format("YYYY-MM-DD HH:mm:ss"));
+    }
 
     // 2. Convert to UTC for querying
     const monthStartUTC = monthStartIST.utc().toDate();
     const monthEndUTC = monthEndIST.utc().toDate();
+
+    console.log("DEBUG - Query range:");
+    console.log("DEBUG - Start IST:", monthStartIST.format("YYYY-MM-DD HH:mm:ss"));
+    console.log("DEBUG - End IST:", monthEndIST.format("YYYY-MM-DD HH:mm:ss"));
+    console.log("DEBUG - Start UTC:", monthStartUTC);
+    console.log("DEBUG - End UTC:", monthEndUTC);
 
     // 3. Fetch attendance records
     const attendanceRecords = await prisma.attendance.findMany({
@@ -194,7 +216,17 @@ export const getEmployeeAttendanceByMonth = async (req, res) => {
       checkOutTime: record.checkOutTime ? toISTString(record.checkOutTime) : null
     }));
 
-    res.json({ month, year, attendanceRecords: attendanceRecordsIST });
+    const responseMessage = isCurrentMonth 
+      ? `Attendance for current month (${year}-${paddedMonth}) from start of month to today`
+      : `Attendance for ${year}-${paddedMonth}`;
+
+    res.json({ 
+      month, 
+      year, 
+      isCurrentMonth,
+      message: responseMessage,
+      attendanceRecords: attendanceRecordsIST 
+    });
   } catch (error) {
     console.error("Error fetching employee attendance:", error);
     res.status(500).json({ error: "Failed to fetch employee attendance" });
@@ -305,9 +337,23 @@ export const getEmployeeAttendanceByMonthInAdmin = async (req, res) => {
     // Create date string in ISO format
     const dateString = `${year}-${paddedMonth}-01T00:00:00+05:30`;
 
+    // Get current date in IST
+    const currentDateIST = moment.tz("Asia/Kolkata");
+    const currentMonth = currentDateIST.month() + 1; // moment months are 0-indexed
+    const currentYear = currentDateIST.year();
+
+    // Check if requested month/year is current month/year
+    const isCurrentMonth = (Number(month) === currentMonth && Number(year) === currentYear);
+
     // 1. Compute IST month start and end
     const monthStartIST = moment.tz(dateString, "Asia/Kolkata").startOf("month");
-    const monthEndIST = monthStartIST.clone().endOf("month");
+    let monthEndIST = monthStartIST.clone().endOf("month");
+
+    // If it's current month, limit end date to today
+    if (isCurrentMonth) {
+      const todayEndIST = currentDateIST.clone().endOf("day");
+      monthEndIST = todayEndIST; // Use today's end instead of month end
+    }
 
     // 2. Convert to UTC for querying
     const monthStartUTC = monthStartIST.utc().toDate();
@@ -322,7 +368,7 @@ export const getEmployeeAttendanceByMonthInAdmin = async (req, res) => {
           lte: monthEndUTC,
         },
       },
-      orderBy: { date: "asc" },
+      orderBy: { date: "desc" },
     });
 
     // 4. Convert all dates to IST for response
@@ -339,5 +385,4 @@ export const getEmployeeAttendanceByMonthInAdmin = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch employee attendance" });
   }
 };
-
 
