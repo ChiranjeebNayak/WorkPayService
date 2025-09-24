@@ -1,7 +1,7 @@
 import prisma from "../prisma.js";
 
-// Create dummy office (only if it does not exist)
-export const createDummyOffice = async (req, res) => {
+// Create office (only if it does not exist)
+export const createOffice = async (req, res) => {
   try {
     const existingOffice = await prisma.office.findFirst();
     if (existingOffice) {
@@ -10,56 +10,40 @@ export const createDummyOffice = async (req, res) => {
         .json({ message: "Office already exists", office: existingOffice });
     }
 
-    const latitude = 12.990389;
-    const longitude = 77.569389;
+    const { latitude, longitude, checkin, checkout, breakTime } = req.body;
 
-    // Create dates for 9:30 AM IST and 6:30 PM IST in UTC
-    const checkinUTC = new Date();
-    checkinUTC.setUTCHours(4, 0, 0, 0);  // 9:30 AM IST = 4:00 AM UTC
+    // Validate required fields
+    if (!latitude || !longitude || !checkin || !checkout) {
+      return res.status(400).json({ 
+        error: "Missing required fields: latitude, longitude, checkin, checkout" 
+      });
+    }
 
-    const checkoutUTC = new Date();
-    checkoutUTC.setUTCHours(13, 0, 0, 0);  // 6:30 PM IST = 1:00 PM UTC
-
-    console.log('Creating dummy office with times:');
-    console.log(`Checkin UTC: ${checkinUTC.toISOString()}`);
-    console.log(`Checkout UTC: ${checkoutUTC.toISOString()}`);
+    console.log('Creating office with data from body:');
+    console.log('Latitude:', latitude);
+    console.log('Longitude:', longitude);
+    console.log('Checkin UTC:', checkin);
+    console.log('Checkout UTC:', checkout);
+    console.log('Break Time:', breakTime);
 
     const office = await prisma.office.create({
       data: {
         latitude,
         longitude,
-        checkin: checkinUTC,
-        checkout: checkoutUTC,
-        breakTime: 60  // Default 1 hour break
+        checkin, // Already a valid date string from frontend
+        checkout, // Already a valid date string from frontend
+        breakTime: breakTime || 60  // Default 1 hour break if not provided
       },
     });
 
-    // Convert stored UTC times back to IST for verification in logs
-    console.log('Stored times:');
-    console.log(`Checkin IST: ${new Date(office.checkin).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
-    console.log(`Checkout IST: ${new Date(office.checkout).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+    console.log('Office created successfully with ID:', office.id);
 
     res.status(201).json({ 
-      message: "Dummy office created", 
-      office: {
-        ...office,
-        // Convert to IST time strings for frontend
-        checkin: new Date(office.checkin).toLocaleString('en-IN', { 
-          timeZone: 'Asia/Kolkata',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        }),
-        checkout: new Date(office.checkout).toLocaleString('en-IN', {
-          timeZone: 'Asia/Kolkata',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        })
-      }
+      message: "Office created successfully", 
+      office
     });
   } catch (error) {
-    console.error("Error creating dummy office:", error);
+    console.error("Error creating office:", error);
     res.status(500).json({ error: "Failed to create office" });
   }
 };
