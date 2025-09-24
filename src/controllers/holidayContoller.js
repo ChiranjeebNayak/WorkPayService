@@ -1,6 +1,24 @@
 import prisma from "../prisma.js";
 import moment from "moment-timezone";
 
+
+// Convert UTC date to IST string for response (same as attendance)
+const toISTString = (utcDate) =>
+  moment.utc(utcDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss");
+
+// Convert IST date to IST date string (YYYY-MM-DD format)
+const toISTDateString = (utcDate) =>
+  moment.utc(utcDate).tz("Asia/Kolkata").format("YYYY-MM-DD");
+
+// Convert IST date string to UTC start of day (same logic as attendance)
+const getISTDateAsUTC = (dateString) => {
+  // Parse the IST date and get start of day in IST, then convert to UTC
+  return moment.tz(dateString, "YYYY-MM-DD", "Asia/Kolkata")
+    .startOf("day")
+    .utc()
+    .toDate();
+};
+
 // ✅ Get holidays for current year, grouped by month
 export const getHolidaysByYear = async (req, res) => {
   try {
@@ -48,7 +66,6 @@ export const getHolidaysByYear = async (req, res) => {
   }
 };
 
-// Add holiday
 export const addHoliday = async (req, res) => {
   try {
     const { description, date } = req.body;
@@ -60,17 +77,23 @@ export const addHoliday = async (req, res) => {
     // Ensure only YYYY-MM-DD is taken (drop any accidental time)
     const onlyDate = date.split("T")[0];
 
-    // Build valid Date at UTC midnight
-    const holidayDate = new Date(`${onlyDate}T00:00:00Z`);
-
-    if (isNaN(holidayDate)) {
+    // Validate date format
+    if (!moment(onlyDate, "YYYY-MM-DD", true).isValid()) {
       return res.status(400).json({ error: "Invalid date format, expected YYYY-MM-DD" });
     }
+
+    // Convert IST date to UTC (start of day in IST becomes UTC timestamp)
+    // This matches how attendance stores dates
+    const holidayDateUTC = getISTDateAsUTC(onlyDate);
+
+    console.log("DEBUG - Input IST date:", onlyDate);
+    console.log("DEBUG - Stored UTC date:", holidayDateUTC);
+    console.log("DEBUG - Converted back to IST:", toISTDateString(holidayDateUTC));
 
     // Check if holiday already exists on this date
     const existingHoliday = await prisma.holiday.findFirst({
       where: {
-        date: holidayDate
+        date: holidayDateUTC
       }
     });
 
@@ -79,7 +102,7 @@ export const addHoliday = async (req, res) => {
         error: "A holiday already exists on this date",
         existing: {
           ...existingHoliday,
-          date: onlyDate
+          date: toISTDateString(existingHoliday.date) // Convert back to IST for response
         }
       });
     }
@@ -87,7 +110,7 @@ export const addHoliday = async (req, res) => {
     const holiday = await prisma.holiday.create({
       data: {
         description,
-        date: holidayDate,
+        date: holidayDateUTC, // Store as UTC (like attendance)
       },
     });
 
@@ -95,7 +118,7 @@ export const addHoliday = async (req, res) => {
       message: "Holiday added successfully",
       holiday: {
         ...holiday,
-        date: onlyDate, // return same YYYY-MM-DD back
+        date: toISTDateString(holiday.date), // Convert back to IST for response
       },
     });
   } catch (error) {
@@ -103,6 +126,7 @@ export const addHoliday = async (req, res) => {
     res.status(500).json({ error: "Failed to add holiday" });
   }
 };
+
 
 
 

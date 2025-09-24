@@ -2,8 +2,11 @@ import prisma from "../prisma.js";
 import moment from "moment-timezone";
 
 // ---------------- Helper ----------------
-const toUTC = (datetime) =>
-  moment.tz(datetime, "Asia/Kolkata").utc().startOf("day").toDate();
+const toUTC = (datetime) => {
+  // Convert IST date to UTC properly
+  return moment.tz(datetime, "Asia/Kolkata").startOf("day").utc().toDate();
+};
+
 const formatDateIST = (datetime) =>
   moment.utc(datetime).tz("Asia/Kolkata").format("YYYY-MM-DD");
 
@@ -28,7 +31,7 @@ export const applyLeave = async (req, res) => {
         .json({ error: "Start date cannot be after end date" });
     }
 
-    // 1️⃣ Overlapping leave check (your existing logic kept)
+    // 1️⃣ Overlapping leave check
     const existingLeaves = await prisma.leave.findMany({
       where: {
         empId: Number(empId),
@@ -95,16 +98,19 @@ export const applyLeave = async (req, res) => {
         .json({ error: "Start date or end date cannot be a holiday" });
     }
 
-    // 3️⃣ Build working days list (exclude holidays in between)
+    // 3️⃣ Build working days list (FIXED: exclude holidays in between)
     let workingDates = [];
-    let cursor = moment(fromDateUTC);
-    while (cursor <= moment(toDateUTC)) {
+    let cursor = moment.utc(fromDateUTC); // Use UTC cursor to avoid timezone issues
+    
+    while (cursor <= moment.utc(toDateUTC)) {
       const dateStr = cursor.format("YYYY-MM-DD");
       if (!holidayDates.includes(dateStr)) {
-        workingDates.push(toUTC(dateStr));
+        // Don't call toUTC again - just use the cursor date directly
+        workingDates.push(cursor.clone().toDate());
       }
       cursor.add(1, "day");
     }
+    
     const totalWorkingDays = workingDates.length;
 
     if (totalWorkingDays <= 0) {
@@ -181,7 +187,7 @@ export const applyLeave = async (req, res) => {
       leaveApplications.push(paidLeave, unpaidLeave);
     }
 
-    // ✅ Response unchanged
+    // Response with formatted dates
     res.json({
       message: "Leave application submitted",
       applications: leaveApplications.map((l) => ({
@@ -198,7 +204,6 @@ export const applyLeave = async (req, res) => {
     });
   }
 };
-
 
 // ---------------- Get Leave Summary ----------------
 export const getLeaveSummary = async (req, res) => {
