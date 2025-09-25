@@ -241,6 +241,8 @@ export const getLeaveSummary = async (req, res) => {
   }
 };
 
+
+
 // ---------------- Approve / Reject Leave ----------------
 export const updateLeaveStatus = async (req, res) => {
   try {
@@ -252,10 +254,22 @@ export const updateLeaveStatus = async (req, res) => {
 
     const leave = await prisma.leave.findUnique({
       where: { id: Number(leaveId) },
-      include: { employee: { select: { id: true, name: true, leaveBalance: true } } },
+      include: { 
+        employee: { 
+          select: { 
+            id: true, 
+            name: true, 
+            leaveBalance: true,
+            baseSalary: true // Include baseSalary for dynamic calculation
+          } 
+        } 
+      },
     });
 
     if (!leave) return res.status(404).json({ error: "Leave not found" });
+
+    let totalDeductionAmount = 0;
+    let deductionDetails = [];
 
     if (status === "APPROVED" && leave.type === "PAID") {
       await prisma.employee.update({
@@ -269,38 +283,83 @@ export const updateLeaveStatus = async (req, res) => {
       const start = new Date(leave.fromDate);
       const end = new Date(leave.toDate);
 
+      // Get employee's base salary for dynamic calculation
+      const employeeSalary = leave.employee.baseSalary;
+
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        // Calculate total days in the month of this leave day
+        const leaveDay = moment.utc(d).tz("Asia/Kolkata");
+        const totalDaysInMonth = leaveDay.daysInMonth();
+        
+        // Calculate per-day deduction amount
+        const perDayAmount = Math.round(employeeSalary / totalDaysInMonth);
+        totalDeductionAmount += perDayAmount;
+
+        // Format the leave date for description
+        const leaveDateIST = formatDateIST(d);
+
         transactions.push({
           empId: leave.empId,
-          amount: 1000,
+          amount: perDayAmount,
           payType: "DEDUCTION",
-          description: `Deduction for unpaid leave on ${formatDateIST(
-            d
-          )} (Leave ID: ${leave.id})`,
+          description: `Unpaid leave deduction for ${leaveDateIST} (₹${perDayAmount}/${totalDaysInMonth} days) - Leave ID: ${leave.id}`,
           date: new Date(d),
+        });
+
+        // Store deduction details for response
+        deductionDetails.push({
+          date: leaveDateIST,
+          amount: perDayAmount,
+          daysInMonth: totalDaysInMonth
         });
       }
 
-      await prisma.transaction.createMany({ data: transactions });
+      if (transactions.length > 0) {
+        await prisma.transaction.createMany({ data: transactions });
+        console.log(`DEBUG - Created ${transactions.length} deduction transactions for unpaid leave. Total: ₹${totalDeductionAmount}`);
+      }
     }
 
     const updatedLeave = await prisma.leave.update({
       where: { id: Number(leaveId) },
       data: { status },
-      include: { employee: { select: { id: true, name: true, leaveBalance: true } } },
+      include: { 
+        employee: { 
+          select: { 
+            id: true, 
+            name: true, 
+            leaveBalance: true,
+            baseSalary: true
+          } 
+        } 
+      },
     });
 
-    res.json({
+    // Prepare response with deduction information
+    const responseData = {
       message: `Leave ${status.toLowerCase()}`,
       leave: {
         ...updatedLeave,
         fromDate: formatDateIST(updatedLeave.fromDate),
         toDate: formatDateIST(updatedLeave.toDate),
-      },
-    });
+      }
+    };
+
+    // Add deduction details if unpaid leave was approved
+    if (status === "APPROVED" && leave.type === "UNPAID") {
+      responseData.deductionSummary = {
+        totalAmount: totalDeductionAmount,
+        totalDays: leave.totalDays,
+        employeeSalary: leave.employee.baseSalary,
+        deductionDetails: deductionDetails
+      };
+    }
+
+    res.json(responseData);
+
   } catch (error) {
     console.error("Error updating leave status:", error);
-    res.status(500).json({ error: "Failed to update leave status" });
+    res.status(500).json({ error: "Failed to update leave status", details: error.message });
   }
 };
 

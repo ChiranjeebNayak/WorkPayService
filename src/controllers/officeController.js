@@ -3,13 +3,6 @@ import prisma from "../prisma.js";
 // Create office (only if it does not exist)
 export const createOffice = async (req, res) => {
   try {
-    const existingOffice = await prisma.office.findFirst();
-    if (existingOffice) {
-      return res
-        .status(400)
-        .json({ message: "Office already exists", office: existingOffice });
-    }
-
     const { latitude, longitude, checkin, checkout, breakTime } = req.body;
 
     // Validate required fields
@@ -47,6 +40,7 @@ export const createOffice = async (req, res) => {
     res.status(500).json({ error: "Failed to create office" });
   }
 };
+
 
 // ✅ Get Office Settings 
 export const getOffice = async (req, res) => {

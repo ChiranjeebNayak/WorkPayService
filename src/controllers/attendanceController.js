@@ -29,6 +29,21 @@ const getTodayOfficeTimeUTC = (storedOfficeTime) => {
     .toDate();
 };
 
+
+// Check if employee has approved leave for a specific date
+const hasApprovedLeaveForDate = async (empId, targetDateUTC) => {
+  const leave = await prisma.leave.findFirst({
+    where: {
+      empId: empId,
+      status: "APPROVED",
+      fromDate: { lte: targetDateUTC },
+      toDate: { gte: targetDateUTC }
+    }
+  });
+  
+  return leave !== null;
+};
+
 // Attendance Check-In / Check-Out
 export const handleAttendance = async (req, res) => {
   try {
@@ -386,3 +401,259 @@ export const getEmployeeAttendanceByMonthInAdmin = async (req, res) => {
   }
 };
 
+
+
+// Main controller: Mark attendance for absent employees
+export const markAttendanceForAbsentEmployees = async (req, res) => {
+  try {
+    // Get current time and today's IST date range in UTC (similar to handleAttendance)
+    const nowUTC = getCurrentUTC();
+    const { startUTC: todayStartUTC, endUTC: todayEndUTC } = getISTRangeUTC(nowUTC);
+    const targetDateUTC = todayStartUTC; // Use today's start as target date
+    
+    // Get today's IST date for display
+    const todayIST = moment.utc(nowUTC).tz("Asia/Kolkata").format("YYYY-MM-DD");
+    
+    console.log("DEBUG - Processing attendance for today's IST date:", todayIST);
+
+    // Check if bulk attendance marking was already done today
+    const existingBulkRecords = await prisma.attendance.count({
+      where: {
+        date: { gte: todayStartUTC, lt: todayEndUTC },
+        checkInTime: null, // Records created by bulk marking have null checkInTime
+        status: { in: ["ABSENT", "LEAVE"] }
+      }
+    });
+
+    if (existingBulkRecords > 0) {
+      return res.status(400).json({
+        message: `Bulk attendance marking already completed for today (${todayIST}). Found ${existingBulkRecords} records.`,
+        date: todayIST,
+        alreadyProcessed: true
+      });
+    }
+    
+    console.log("DEBUG - Date range UTC:");
+    console.log("DEBUG - Start UTC:", todayStartUTC);
+    console.log("DEBUG - End UTC:", todayEndUTC);
+    console.log("DEBUG - Target date UTC:", targetDateUTC);
+
+    // Holiday handling is already managed in your existing system
+    console.log("DEBUG - Holiday handling managed by existing system");
+
+    // Get all employees
+    const allEmployees = await prisma.employee.findMany({
+      select: { id: true, name: true }
+    });
+
+    console.log("DEBUG - Total employees:", allEmployees.length);
+
+    // Get employees who already have attendance records for today
+    const existingAttendance = await prisma.attendance.findMany({
+      where: {
+        date: {
+          gte: todayStartUTC,
+          lt: todayEndUTC
+        }
+      },
+      select: { empId: true }
+    });
+
+    const employeesWithAttendance = new Set(existingAttendance.map(att => att.empId));
+    console.log("DEBUG - Employees with existing attendance:", employeesWithAttendance.size);
+
+    // Find employees without attendance records
+    const employeesWithoutAttendance = allEmployees.filter(emp => 
+      !employeesWithAttendance.has(emp.id)
+    );
+
+    console.log("DEBUG - Employees without attendance:", employeesWithoutAttendance.length);
+
+    if (employeesWithoutAttendance.length === 0) {
+      return res.json({
+        message: `All employees already have attendance records for today (${todayIST})`,
+        date: todayIST,
+        processedEmployees: []
+      });
+    }
+
+    // Process each employee without attendance using transaction for safety
+    const processedEmployees = [];
+    
+    // Use a transaction to ensure data consistency
+    const result = await prisma.$transaction(async (prisma) => {
+      const batchResults = [];
+      
+      for (const employee of employeesWithoutAttendance) {
+        // Double-check this employee doesn't have a record (race condition protection)
+        const existingRecord = await prisma.attendance.findFirst({
+          where: {
+            empId: employee.id,
+            date: { gte: todayStartUTC, lt: todayEndUTC }
+          }
+        });
+
+        if (existingRecord) {
+          console.log(`DEBUG - Skipping ${employee.name}, record already exists`);
+          continue; // Skip if record already exists
+        }
+
+        let status = "ABSENT";
+        let reason = "No check-in recorded";
+
+        // Check if employee has approved leave for this date
+        const hasLeave = await hasApprovedLeaveForDate(employee.id, targetDateUTC);
+        
+        if (hasLeave) {
+          status = "LEAVE";
+          reason = "Approved leave";
+        }
+
+        let employeeData = null; // Declare outside to access in batchResults
+
+        try {
+          // Create attendance record with additional safety using upsert-like logic
+          const attendanceRecord = await prisma.attendance.create({
+            data: {
+              empId: employee.id,
+              date: todayStartUTC, // Store as UTC (consistent with handleAttendance)
+              checkInTime: null,
+              checkOutTime: null,
+              overTime: 0,
+              status: status
+            }
+          });
+
+          // Create deduction transaction for ABSENT status
+          if (status === "ABSENT") {
+            // Get employee's base salary
+            employeeData = await prisma.employee.findUnique({
+              where: { id: employee.id },
+              select: { baseSalary: true, name: true }
+            });
+
+            if (employeeData) {
+              // Calculate total days in current month
+              const currentMonth = moment.utc(todayStartUTC).tz("Asia/Kolkata");
+              const totalDaysInMonth = currentMonth.daysInMonth();
+              
+              // Calculate per-day deduction amount
+              const perDayAmount = Math.round(employeeData.baseSalary / totalDaysInMonth);
+              
+              // Create deduction transaction
+              await prisma.transaction.create({
+                data: {
+                  empId: employee.id,
+                  amount: perDayAmount,
+                  payType: "DEDUCTION",
+                  description: `Absent deduction for ${currentMonth.format("YYYY-MM-DD")} (₹${perDayAmount}/${totalDaysInMonth} days)`,
+                  date: todayStartUTC
+                }
+              });
+
+              console.log(`DEBUG - Created deduction for ${employee.name}: ₹${perDayAmount} for absent on ${currentMonth.format("YYYY-MM-DD")}`);
+            }
+          }
+
+          batchResults.push({
+            employeeId: employee.id,
+            employeeName: employee.name,
+            status: status,
+            reason: reason,
+            attendanceId: attendanceRecord.id,
+            deductionAmount: status === "ABSENT" && employeeData ? Math.round(employeeData.baseSalary / moment.utc(todayStartUTC).tz("Asia/Kolkata").daysInMonth()) : 0
+          });
+
+          console.log(`DEBUG - Processed ${employee.name} (ID: ${employee.id}): ${status}`);
+        } catch (createError) {
+          // Handle potential unique constraint violations gracefully
+          if (createError.code === 'P2002') { // Prisma unique constraint error
+            console.log(`DEBUG - Duplicate prevented for ${employee.name}`);
+            continue;
+          }
+          throw createError; // Re-throw if it's not a duplicate error
+        }
+      }
+      
+      return batchResults;
+    });
+
+    processedEmployees.push(...result);
+
+    // Summary with deduction details
+    const summary = processedEmployees.reduce((acc, emp) => {
+      acc[emp.status] = (acc[emp.status] || 0) + 1;
+      if (emp.status === "ABSENT") {
+        acc.totalDeductions = (acc.totalDeductions || 0) + emp.deductionAmount;
+        acc.deductionCount = (acc.deductionCount || 0) + 1;
+      }
+      return acc;
+    }, {});
+
+    console.log("DEBUG - Processing summary:", summary);
+
+    res.json({
+      message: `Successfully processed attendance for ${employeesWithoutAttendance.length} employees for today (${todayIST})`,
+      date: todayIST,
+      totalProcessed: employeesWithoutAttendance.length,
+      summary: summary,
+      processedEmployees: processedEmployees
+    });
+
+  } catch (error) {
+    console.error("Error marking attendance for absent employees:", error);
+    res.status(500).json({ 
+      error: "Failed to mark attendance for absent employees", 
+      details: error.message 
+    });
+  }
+};
+
+
+
+// Check if bulk attendance marking is already done for today (for UI button state)
+export const checkBulkAttendanceStatus = async (req, res) => {
+  try {
+    // Get current time and today's IST date range in UTC
+    const nowUTC = getCurrentUTC();
+    const { startUTC: todayStartUTC, endUTC: todayEndUTC } = getISTRangeUTC(nowUTC);
+    const todayIST = moment.utc(nowUTC).tz("Asia/Kolkata").format("YYYY-MM-DD");
+
+    // Check if bulk attendance marking was already done today
+    const existingBulkRecords = await prisma.attendance.count({
+      where: {
+        date: { gte: todayStartUTC, lt: todayEndUTC },
+        checkInTime: null, // Records created by bulk marking have null checkInTime
+        status: { in: ["ABSENT", "LEAVE"] }
+      }
+    });
+
+    const isCompleted = existingBulkRecords > 0;
+
+    // Get additional stats for context
+    const totalEmployees = await prisma.employee.count();
+    const totalAttendanceToday = await prisma.attendance.count({
+      where: {
+        date: { gte: todayStartUTC, lt: todayEndUTC }
+      }
+    });
+
+    const remainingEmployees = totalEmployees - totalAttendanceToday;
+
+    res.json({
+      date: todayIST,
+      isBulkMarkingCompleted: isCompleted,
+      bulkRecordsCount: existingBulkRecords,
+      totalEmployees: totalEmployees,
+      totalAttendanceToday: totalAttendanceToday,
+      remainingEmployees: remainingEmployees
+    });
+
+  } catch (error) {
+    console.error("Error checking bulk attendance status:", error);
+    res.status(500).json({ 
+      error: "Failed to check bulk attendance status", 
+      details: error.message 
+    });
+  }
+};
