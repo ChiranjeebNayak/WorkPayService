@@ -4,9 +4,9 @@ import {adminAuth} from "../Middleware/authMiddleware.js"
 
 const router = express.Router();
 
-router.post("/create-dummy", createOffice);
+router.post("/create", createOffice);
 router.get("/",adminAuth, getOffices);
-router.put("/",adminAuth ,updateOffice);
+router.put("/update/:id",adminAuth ,updateOffice);
 
 
 export default router;
