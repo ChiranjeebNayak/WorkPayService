@@ -13,6 +13,10 @@ export const loginEmployee = async (req, res) => {
     const employee = await prisma.employee.findUnique({ where: { phone } });
     if (!employee) return res.status(404).json({ error: "Employee not found" });
 
+    if (employee.status !== "ACTIVE") {
+      return res.status(403).json({ error: "Employee login is not allowed" });
+    }
+
     const isPasswordValid = await bcrypt.compare(password, employee.password);
     if (!isPasswordValid) return res.status(401).json({ error: "Invalid credentials" });
 
@@ -158,6 +162,25 @@ export const updateEmployee = async (req, res) => {
   } catch (error) {
     console.error("Error updating employee:", error);
     res.status(500).json({ error: "Failed to update employee" });
+  }
+};
+
+// update employee status (ACTIVE/INACTIVE)
+export const updateEmployeeStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!["ACTIVE", "INACTIVE"].includes(status)) {
+      return res.status(400).json({ error: "Invalid status value" });
+    }
+    const updatedEmployee = await prisma.employee.update({
+      where: { id: Number(id) },
+      data: { status },
+    });
+    res.json({ message: `Employee status updated to ${status} for: ${updatedEmployee.name}` });
+  } catch (error) {
+    console.error("Error updating employee status:", error);
+    res.status(500).json({ error: "Failed to update employee status" });
   }
 };
 

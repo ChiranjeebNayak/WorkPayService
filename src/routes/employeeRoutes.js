@@ -9,7 +9,8 @@ import {
   resetPasswordWithPhone,
   resetPasswordWithJWT,
   getEmployeeByPhone,
-  getEmployeeDashboard
+  getEmployeeDashboard,
+  updateEmployeeStatus
 } from "../controllers/employeeController.js";
 import { adminAuth,employeeAuth } from "../Middleware/authMiddleware.js";
 
@@ -19,6 +20,7 @@ router.post("/add", adminAuth, createEmployee);         // Create employee
 router.get("/getAll", adminAuth, getEmployees);            // Get all employees
 router.get("/get/:id", adminAuth, getEmployeeById);      // Get single employee
 router.put("/update/:id", adminAuth, updateEmployee);       // Update employee
+router.put("/update-status/:id", adminAuth, updateEmployeeStatus); // Update employee status
 router.delete("/delete/:id", adminAuth, deleteEmployee);
 
 //login routes

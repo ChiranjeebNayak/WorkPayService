@@ -15,6 +15,13 @@ export const addTransaction = async (req, res) => {
       return res.status(400).json({ error: "empId, amount and type are required" });
     }
 
+    const employee = await prisma.employee.findUnique({ where: { id: Number(empId) } });
+    if (!employee) return res.status(404).json({ error: "Employee not found" });
+
+    if (employee.status !== "ACTIVE") {
+      return res.status(403).json({ error: `Cannot add ${type} for Inactive employee` });
+    }
+
     // Current UTC time
     const nowUTC = new Date();
 
