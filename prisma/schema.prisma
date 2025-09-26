@@ -57,6 +57,7 @@ model Admin {
 
 model Office {
   id        Int        @id @default(autoincrement())
+  name      String
   latitude  Float
   longitude Float
   checkin   DateTime

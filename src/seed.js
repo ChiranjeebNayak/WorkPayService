@@ -1,7 +1,8 @@
-import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import moment from "moment";
 
+import pkg from '@prisma/client';
+const { PrismaClient } = pkg;
 const prisma = new PrismaClient();
 
 async function main() {
@@ -31,6 +32,7 @@ async function main() {
   // 🏢 Create Office
   const office = await prisma.office.create({
     data: {
+      name: "Head Office",
       latitude: 12.9716,
       longitude: 77.5946,
       checkin: new Date("2025-09-01T03:30:00Z"),

@@ -3,7 +3,7 @@ import prisma from "../prisma.js";
 // Create office (only if it does not exist)
 export const createOffice = async (req, res) => {
   try {
-    const { latitude, longitude, checkin, checkout, breakTime } = req.body;
+    const {name, latitude, longitude, checkin, checkout, breakTime } = req.body;
 
     // Validate required fields
     if (!latitude || !longitude || !checkin || !checkout) {
@@ -21,6 +21,7 @@ export const createOffice = async (req, res) => {
 
     const office = await prisma.office.create({
       data: {
+        name,
         latitude,
         longitude,
         checkin, // Already a valid date string from frontend
@@ -43,13 +44,13 @@ export const createOffice = async (req, res) => {
 
 
 // ✅ Get Office Settings 
-export const getOffice = async (req, res) => {
+export const getOffices = async (req, res) => {
   try {
-    const office = await prisma.office.findFirst();
-    if (!office) {
-      return res.status(404).json({ error: "Office settings not found" });
+    const offices = await prisma.office.findMany();
+    if (!offices || offices.length === 0) {
+      return res.status(404).json({ error: "No office settings found" });
     }
-    res.json(office);
+    res.json({message: "Office settings fetched successfully", offices });
   } catch (error) {
     console.error("Error fetching office:", error);
     res.status(500).json({ error: "Failed to fetch office" });
@@ -61,14 +62,20 @@ export const getOffice = async (req, res) => {
 // ✅ Update Office Settings
 export const updateOffice = async (req, res) => {
   try {
-    const { latitude, longitude, checkin, checkout ,breakTime} = req.body;
+    const { id } = req.params;
+    const {name, latitude, longitude, checkin, checkout ,breakTime} = req.body;
 
-    const office = await prisma.office.findFirst();
+    const office = await prisma.office.findFirst(
+      {
+        where: { id: Number(id) }
+      }
+    );
     if (!office) {
       return res.status(404).json({ error: "Office settings not found. Please create first." });
     }
 
     const updateData = {
+      name,
       latitude,
       longitude,
       checkin,
@@ -81,7 +88,7 @@ export const updateOffice = async (req, res) => {
       data: updateData,
     });
 
-    res.json({ message: "Office settings updated successfully", office: updatedOffice });
+    res.json({ message: `Office ${updatedOffice.name} settings updated successfully`, office: updatedOffice });
   } catch (error) {
     console.error("Error updating office:", error);
     res.status(500).json({ error: "Failed to update office" });
