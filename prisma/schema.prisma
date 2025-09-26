@@ -40,6 +40,11 @@ enum attendanceStatus {
   HOLIDAY
 }
 
+enum EmployeeActiveStatus {
+  ACTIVE
+  INACTIVE
+}
+
 
 model Admin {
   id       Int       @id @default(autoincrement())
@@ -76,8 +81,9 @@ model Employee {
   baseSalary   Int
   overtimeRate Int
   leaveBalance Int           @default(10)   // initial balance, will decrease as leaves are approved
+  status       EmployeeActiveStatus @default(ACTIVE)
   officeId     Int
-  adminId      Int
+  adminId      Int 
   office       Office @relation(fields: [officeId], references: [id])
   admin        Admin  @relation(fields: [adminId], references: [id])
   leaves       Leave[]
