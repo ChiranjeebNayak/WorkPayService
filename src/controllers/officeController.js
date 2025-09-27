@@ -94,3 +94,38 @@ export const updateOffice = async (req, res) => {
     res.status(500).json({ error: "Failed to update office" });
   }
 };
+
+// ✅ Delete Office Settings
+export const deleteOffice = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const office = await prisma.office.findFirst(
+      {
+        where: { id: Number(id) }
+      }
+    );
+    if (!office) {
+      return res.status(404).json({ error: "Office settings not found" });
+    }
+
+    const associatedEmployees = await prisma.employee.findMany({
+      where: { officeId: office.id },
+      select: { id: true, name: true }
+    });
+
+    if (associatedEmployees.length > 0) {
+      return res.status(400).json({ 
+        error: "Cannot delete office with associated employees. Please reassign  employees first.",
+      });
+    }
+
+    await prisma.office.delete({
+      where: { id: office.id }
+    });
+
+    res.json({ message: `Office ${office.name} deleted successfully` });
+  } catch (error) {
+    console.error("Error deleting office:", error);
+    res.status(500).json({ error: "Failed to delete office" });
+  }
+};
