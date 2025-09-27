@@ -205,12 +205,77 @@ export const applyLeave = async (req, res) => {
   }
 };
 
-// ---------------- Get Leave Summary ----------------
+// ---------------- Get Leave Summary (Office-specific) ----------------
 export const getLeaveSummary = async (req, res) => {
   try {
+    // 1. Determine target office (same logic as other controllers)
+    let targetOfficeId;
+    const { officeId } = req.params;
+    
+    console.log("DEBUG - Getting leave summary for officeId:", officeId);
+    
+    if (officeId !== undefined) {
+      // Use the provided officeId
+      targetOfficeId = Number(officeId);
+      
+      // Verify office exists
+      const officeExists = await prisma.office.findUnique({
+        where: { id: targetOfficeId },
+        select: { id: true, name: true }
+      });
+      
+      if (!officeExists) {
+        return res.status(404).json({ error: "Office not found" });
+      }
+    } else {
+      // Get the first office if no officeId provided
+      const firstOffice = await prisma.office.findFirst({
+        orderBy: { id: 'asc' },
+        select: { id: true, name: true }
+      });
+      
+      if (!firstOffice) {
+        return res.status(404).json({ error: "No offices found" });
+      }
+      
+      targetOfficeId = firstOffice.id;
+    }
+
+    // 2. Get all active employees for the target office
+    const officeEmployees = await prisma.employee.findMany({
+      where: { 
+        officeId: targetOfficeId,
+        status: 'ACTIVE'
+      },
+      select: { id: true }
+    });
+
+    const employeeIds = officeEmployees.map(emp => emp.id);
+    
+    console.log("DEBUG - Total active employees in office:", employeeIds.length);
+
+    const office = await prisma.office.findUnique({
+      where: { id: targetOfficeId },
+      select: { id: true, name: true }
+    });
+
+    if (employeeIds.length === 0) {
+      return res.json({
+        office: office,
+        approvedLeaves: [],
+        rejectedLeaves: [],
+        pendingLeaves: [],
+        message: "No active employees found in this office"
+      });
+    }
+
+    // 3. Fetch leaves filtered by office employees
     const fetchLeaves = async (status) => {
       return prisma.leave.findMany({
-        where: { status },
+        where: { 
+          status,
+          empId: { in: employeeIds } // Filter by office employees
+        },
         orderBy: { applyDate: "desc" },
         take: status === "PENDING" ? undefined : 10,
         include: { employee: { select: { id: true, name: true } } },
@@ -230,17 +295,34 @@ export const getLeaveSummary = async (req, res) => {
         toDate: formatDateIST(l.toDate),
       }));
 
+    // 4. Get office details for response
+    const officeDetails = await prisma.office.findUnique({
+      where: { id: targetOfficeId },
+      select: { id: true, name: true }
+    });
+
+    console.log("DEBUG - Leave summary counts:", {
+      approved: approved.length,
+      rejected: rejected.length,
+      pending: pending.length
+    });
+
     res.json({
+      office: officeDetails,
       approvedLeaves: formatLeaves(approved),
       rejectedLeaves: formatLeaves(rejected),
       pendingLeaves: formatLeaves(pending),
+      totalCounts: {
+        approved: approved.length,
+        rejected: rejected.length,
+        pending: pending.length
+      }
     });
   } catch (error) {
     console.error("Error fetching leave summary:", error);
     res.status(500).json({ error: "Failed to fetch leave summary" });
   }
 };
-
 
 
 // ---------------- Approve / Reject Leave ----------------

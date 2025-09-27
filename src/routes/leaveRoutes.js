@@ -8,6 +8,7 @@ leaveRoutes.post("/apply", employeeAuth, applyLeave);
 
 // ✅ Leave dashboard summary
 leaveRoutes.get("/summary",adminAuth, getLeaveSummary);
+leaveRoutes.get("/summary/:officeId",adminAuth, getLeaveSummary);
 
 // ✅ Approve/Reject leave
 leaveRoutes.post("/update-status",adminAuth, updateLeaveStatus);
