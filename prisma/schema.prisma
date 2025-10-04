@@ -64,6 +64,7 @@ model Office {
   checkout  DateTime
   breakTime Int @default(0)
   employees Employee[]
+  range     Int @default(1000)
 }
 
 model Holiday {
@@ -85,6 +86,8 @@ model Employee {
   status       EmployeeActiveStatus @default(ACTIVE)
   officeId     Int
   adminId      Int 
+  accountNumber String?
+  ifscCode     String?
   office       Office @relation(fields: [officeId], references: [id])
   admin        Admin  @relation(fields: [adminId], references: [id])
   leaves       Leave[]
