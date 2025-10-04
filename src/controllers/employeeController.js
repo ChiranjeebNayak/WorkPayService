@@ -36,7 +36,7 @@ export const loginEmployee = async (req, res) => {
 export const createEmployee = async (req, res) => {
   try {
     const adminId = req.admin.id; // from adminAuth middleware
-    const { name, phone, email, password, baseSalary, overtimeRate, officeId,joinedDate } = req.body;
+    const { name, phone, email, password, baseSalary, overtimeRate, officeId, joinedDate } = req.body;
 
     if (!name || !phone || !email || !password || !baseSalary || !overtimeRate || !officeId || !adminId) {
       return res.status(400).json({ error: "All required fields must be provided" });
@@ -55,34 +55,93 @@ export const createEmployee = async (req, res) => {
     // hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const employee = await prisma.employee.create({
-      data: {
-        name,
-        phone,
-        email,
-        password: hashedPassword,
-        baseSalary:Number(baseSalary),
-        overtimeRate:Number(overtimeRate),
-        officeId:Number(officeId),
-        adminId:Number(adminId),
-        joinedDate:new Date(joinedDate)
+    // Get current UTC time and convert to IST to get today's date
+    const nowUTC = getCurrentUTC();
+    const todayIST = moment.utc(nowUTC).tz("Asia/Kolkata").startOf('day');
+    const todayUTC = todayIST.utc().toDate();
+
+    console.log("DEBUG - Employee creation date IST:", todayIST.format("YYYY-MM-DD"));
+    console.log("DEBUG - Employee creation date UTC:", todayUTC);
+
+    // Get all holidays that are on or after TODAY (employee creation date)
+    const upcomingHolidays = await prisma.holiday.findMany({
+      where: {
+        date: {
+          gte: todayUTC // Holidays on or after today
+        }
       },
+      orderBy: {
+        date: 'asc'
+      }
     });
 
-    res.status(201).json(
-      { message: `Employee created successfully: ${employee.name}`, data: {
-        id: employee.id,
-        name: employee.name,
-        phone: employee.phone,
-        email: employee.email,
-        baseSalary: employee.baseSalary,
-        overtimeRate: employee.overtimeRate,
-        joinedDate:employee.joinedDate
-      } }
+    console.log(`DEBUG - Found ${upcomingHolidays.length} holidays on or after today`);
+
+    // Use transaction to create employee and holiday attendance records atomically
+    const result = await prisma.$transaction(async (tx) => {
+      // Create the employee
+      const employee = await tx.employee.create({
+        data: {
+          name,
+          phone,
+          email,
+          password: hashedPassword,
+          baseSalary: Number(baseSalary),
+          overtimeRate: Number(overtimeRate),
+          officeId: Number(officeId),
+          adminId: Number(adminId),
+          joinedDate: new Date(joinedDate)
+        },
+      });
+
+      console.log(`DEBUG - Created employee: ${employee.name} (ID: ${employee.id})`);
+
+      // Create attendance records for all upcoming holidays
+      let holidayAttendanceCount = 0;
+      if (upcomingHolidays.length > 0) {
+        const holidayAttendanceRecords = await tx.attendance.createMany({
+          data: upcomingHolidays.map(holiday => ({
+            empId: employee.id,
+            date: holiday.date, // Use the same UTC date as holiday
+            checkInTime: null,
+            checkOutTime: null,
+            overTime: 0,
+            status: "HOLIDAY"
+          })),
+          skipDuplicates: true // Skip if attendance already exists (safety check)
+        });
+
+        holidayAttendanceCount = holidayAttendanceRecords.count;
+        console.log(`DEBUG - Created ${holidayAttendanceCount} holiday attendance records for employee`);
+      }
+
+      return { employee, holidayAttendanceCount };
+    });
+
+    // Prepare holiday details for response
+    const holidayDates = upcomingHolidays.map(h => 
+      moment.utc(h.date).tz("Asia/Kolkata").format("YYYY-MM-DD")
     );
+
+    res.status(201).json({
+      message: `Employee created successfully: ${result.employee.name}`,
+      data: {
+        id: result.employee.id,
+        name: result.employee.name,
+        phone: result.employee.phone,
+        email: result.employee.email,
+        baseSalary: result.employee.baseSalary,
+        overtimeRate: result.employee.overtimeRate,
+        joinedDate: result.employee.joinedDate
+      },
+      holidayAttendance: {
+        created: result.holidayAttendanceCount,
+        dates: holidayDates
+      }
+    });
   } catch (error) {
     console.error("Error creating employee:", error);
-    res.status(500).json({ error: "Failed to create employee" });
+    res.status(500).json({ error: "Failed to create employee", details: error.message });
   }
 };
 
