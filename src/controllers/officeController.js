@@ -3,7 +3,7 @@ import prisma from "../prisma.js";
 // Create office (only if it does not exist)
 export const createOffice = async (req, res) => {
   try {
-    const {name, latitude, longitude, checkin, checkout, breakTime } = req.body;
+    const {name, latitude, longitude, checkin, checkout, breakTime ,range} = req.body;
 
     // Validate required fields
     if (!latitude || !longitude || !checkin || !checkout) {
@@ -26,7 +26,8 @@ export const createOffice = async (req, res) => {
         longitude,
         checkin, // Already a valid date string from frontend
         checkout, // Already a valid date string from frontend
-        breakTime: breakTime || 60  // Default 1 hour break if not provided
+        breakTime: breakTime || 60 , // Default 1 hour break if not provided
+        range:Number(range) || 1000,
       },
     });
 
@@ -63,7 +64,7 @@ export const getOffices = async (req, res) => {
 export const updateOffice = async (req, res) => {
   try {
     const { id } = req.params;
-    const {name, latitude, longitude, checkin, checkout ,breakTime} = req.body;
+    const {name, latitude, longitude, checkin, checkout ,breakTime,range} = req.body;
 
     const office = await prisma.office.findFirst(
       {
@@ -80,7 +81,8 @@ export const updateOffice = async (req, res) => {
       longitude,
       checkin,
       checkout,
-      breakTime
+      breakTime,
+      range:Number(range)
     };
 
     const updatedOffice = await prisma.office.update({
