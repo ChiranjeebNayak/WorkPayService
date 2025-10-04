@@ -507,7 +507,7 @@ export const getEmployeeAttendanceByMonthInAdmin = async (req, res) => {
 // Main controller: Mark attendance for absent employees (Office-specific)
 export const markAttendanceForAbsentEmployees = async (req, res) => {
   try {
-    // Get current time and today's IST date range in UTC (similar to handleAttendance)
+    // Get current time and today's IST date range in UTC
     const nowUTC = getCurrentUTC();
     const { startUTC: todayStartUTC, endUTC: todayEndUTC } = getISTRangeUTC(nowUTC);
     const targetDateUTC = todayStartUTC; // Use today's start as target date
@@ -516,6 +516,35 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     const todayIST = moment.utc(nowUTC).tz("Asia/Kolkata").format("YYYY-MM-DD");
     
     console.log("DEBUG - Processing attendance for today's IST date:", todayIST);
+
+    // ====== NEW: Check if today is a holiday ======
+    const todayStartISTMoment = moment.tz(todayIST + " 00:00:00", "Asia/Kolkata");
+    const todayEndISTMoment = moment.tz(todayIST + " 23:59:59", "Asia/Kolkata");
+    
+    const todayStartUTCForHoliday = todayStartISTMoment.utc().toDate();
+    const todayEndUTCForHoliday = todayEndISTMoment.utc().toDate();
+
+    const holidayToday = await prisma.holiday.findFirst({
+      where: {
+        date: {
+          gte: todayStartUTCForHoliday,
+          lte: todayEndUTCForHoliday,
+        },
+      },
+    });
+
+    if (holidayToday) {
+      return res.status(400).json({
+        error: "Cannot finalize attendance on a holiday",
+        message: `Today (${todayIST}) is a holiday: ${holidayToday.description}`,
+        date: todayIST,
+        holiday: {
+          description: holidayToday.description,
+          date: moment.utc(holidayToday.date).tz("Asia/Kolkata").format("YYYY-MM-DD")
+        }
+      });
+    }
+    // ====== END HOLIDAY CHECK ======
 
     // 1. Determine target office (similar to dashboard controller)
     let targetOfficeId;
@@ -553,7 +582,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
       console.log("DEBUG - Processing for default office:", firstOffice.name);
     }
 
-    // 2. Get all employees for the target office
+    // 2. Get all ACTIVE employees for the target office
     const officeEmployees = await prisma.employee.findMany({
       where: { 
         officeId: targetOfficeId,
@@ -563,10 +592,11 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     });
 
     const employeeIds = officeEmployees.map(emp => emp.id);
+    const totalActiveEmployees = officeEmployees.length;
     
-    console.log("DEBUG - Total employees in office:", officeEmployees.length);
+    console.log("DEBUG - Total ACTIVE employees in office:", totalActiveEmployees);
 
-    if (employeeIds.length === 0) {
+    if (totalActiveEmployees === 0) {
       return res.json({
         message: `No active employees found in the selected office for today (${todayIST})`,
         date: todayIST,
@@ -575,24 +605,60 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
       });
     }
 
-    // Check if bulk attendance marking was already done today for this office
-    const existingBulkRecords = await prisma.attendance.count({
+    // ====== NEW: Get current attendance stats and validate ======
+    const attendanceStats = await prisma.attendance.groupBy({
+      by: ["status"],
       where: {
-        empId: { in: employeeIds }, // Filter by office employees
-        date: { gte: todayStartUTC, lt: todayEndUTC },
-        checkInTime: null, // Records created by bulk marking have null checkInTime
-        status: { in: ["ABSENT", "LEAVE"] }
-      }
+        empId: { in: employeeIds },
+        date: {
+          gte: todayStartUTC,
+          lt: todayEndUTC,
+        },
+      },
+      _count: {
+        status: true,
+      },
     });
 
-    if (existingBulkRecords > 0) {
+    // Calculate totals (excluding HOLIDAY since holidays prevent finalization)
+    const stats = {
+      PRESENT: 0,
+      ABSENT: 0,
+      LATE: 0,
+      LEAVE: 0,
+      HOLIDAY: 0
+    };
+
+    attendanceStats.forEach(stat => {
+      stats[stat.status] = stat._count.status;
+    });
+
+    const totalRecorded = stats.PRESENT + stats.ABSENT + stats.LATE + stats.LEAVE;
+
+    console.log("DEBUG - Current attendance stats:", stats);
+    console.log("DEBUG - Total recorded:", totalRecorded);
+    console.log("DEBUG - Total active employees:", totalActiveEmployees);
+
+    // Check if attendance is already complete
+    if (totalRecorded === totalActiveEmployees) {
       return res.status(400).json({
-        message: `Bulk attendance marking already completed for this office today (${todayIST}). Found ${existingBulkRecords} records.`,
+        error: "Attendance already finalized",
+        message: `All ${totalActiveEmployees} active employees already have attendance records for today (${todayIST})`,
         date: todayIST,
         officeId: targetOfficeId,
-        alreadyProcessed: true
+        stats: {
+          totalActiveEmployees,
+          totalRecorded,
+          breakdown: stats
+        },
+        alreadyFinalized: true
       });
     }
+
+    // Check if there are employees missing attendance
+    const missingCount = totalActiveEmployees - totalRecorded;
+    console.log("DEBUG - Missing attendance records:", missingCount);
+    // ====== END VALIDATION ======
     
     console.log("DEBUG - Date range UTC:");
     console.log("DEBUG - Start UTC:", todayStartUTC);
@@ -602,7 +668,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     // Get office employees who already have attendance records for today
     const existingAttendance = await prisma.attendance.findMany({
       where: {
-        empId: { in: employeeIds }, // Filter by office employees
+        empId: { in: employeeIds },
         date: {
           gte: todayStartUTC,
           lt: todayEndUTC
@@ -648,7 +714,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
 
         if (existingRecord) {
           console.log(`DEBUG - Skipping ${employee.name}, record already exists`);
-          continue; // Skip if record already exists
+          continue;
         }
 
         let status = "ABSENT";
@@ -662,14 +728,14 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
           reason = "Approved leave";
         }
 
-        let employeeData = null; // Declare outside to access in batchResults
+        let employeeData = null;
 
         try {
-          // Create attendance record with additional safety using upsert-like logic
+          // Create attendance record
           const attendanceRecord = await prisma.attendance.create({
             data: {
               empId: employee.id,
-              date: todayStartUTC, // Store as UTC (consistent with handleAttendance)
+              date: todayStartUTC,
               checkInTime: null,
               checkOutTime: null,
               overTime: 0,
@@ -720,11 +786,11 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
           console.log(`DEBUG - Processed ${employee.name} (ID: ${employee.id}): ${status}`);
         } catch (createError) {
           // Handle potential unique constraint violations gracefully
-          if (createError.code === 'P2002') { // Prisma unique constraint error
+          if (createError.code === 'P2002') {
             console.log(`DEBUG - Duplicate prevented for ${employee.name}`);
             continue;
           }
-          throw createError; // Re-throw if it's not a duplicate error
+          throw createError;
         }
       }
       
@@ -751,13 +817,30 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
       select: { id: true, name: true }
     });
 
+    // ====== NEW: Get updated stats after finalization ======
+    const updatedStats = {
+      PRESENT: stats.PRESENT,
+      ABSENT: stats.ABSENT + (summary.ABSENT || 0),
+      LATE: stats.LATE,
+      LEAVE: stats.LEAVE + (summary.LEAVE || 0),
+      HOLIDAY: stats.HOLIDAY
+    };
+    const newTotalRecorded = updatedStats.PRESENT + updatedStats.ABSENT + updatedStats.LATE + updatedStats.LEAVE;
+    // ====== END UPDATED STATS ======
+
     res.json({
       message: `Successfully processed attendance for ${employeesWithoutAttendance.length} employees in ${officeDetails.name} for today (${todayIST})`,
       date: todayIST,
       office: officeDetails,
       totalProcessed: employeesWithoutAttendance.length,
       summary: summary,
-      processedEmployees: processedEmployees
+      processedEmployees: processedEmployees,
+      attendanceComplete: newTotalRecorded === totalActiveEmployees,
+      finalStats: {
+        totalActiveEmployees,
+        totalRecorded: newTotalRecorded,
+        breakdown: updatedStats
+      }
     });
 
   } catch (error) {
@@ -837,27 +920,50 @@ export const checkBulkAttendanceStatus = async (req, res) => {
       });
     }
 
-    // 3. Check if bulk attendance marking was already done today for this office
+    // 3. Get attendance stats (excluding HOLIDAY status from total)
+    const attendanceStats = await prisma.attendance.groupBy({
+      by: ["status"],
+      where: {
+        empId: { in: employeeIds },
+        date: {
+          gte: todayStartUTC,
+          lt: todayEndUTC,
+        },
+      },
+      _count: {
+        status: true,
+      },
+    });
+
+    // Calculate totals (excluding HOLIDAY since holidays prevent finalization)
+    const stats = {
+      PRESENT: 0,
+      ABSENT: 0,
+      LATE: 0,
+      LEAVE: 0,
+      HOLIDAY: 0
+    };
+
+    attendanceStats.forEach(stat => {
+      stats[stat.status] = stat._count.status;
+    });
+
+    const totalRecorded = stats.PRESENT + stats.ABSENT + stats.LATE + stats.LEAVE;
+    const totalAttendanceToday = totalRecorded; // Total attendance count for active employees
+    const remainingEmployees = totalEmployeesInOffice - totalRecorded;
+
+    // Check if attendance is complete: totalRecorded === totalActiveEmployees
+    const isCompleted = totalRecorded === totalEmployeesInOffice;
+
+    // Count bulk records for additional context
     const existingBulkRecords = await prisma.attendance.count({
       where: {
-        empId: { in: employeeIds }, // Filter by office employees
+        empId: { in: employeeIds },
         date: { gte: todayStartUTC, lt: todayEndUTC },
-        checkInTime: null, // Records created by bulk marking have null checkInTime
+        checkInTime: null,
         status: { in: ["ABSENT", "LEAVE"] }
       }
     });
-
-    const isCompleted = existingBulkRecords > 0;
-
-    // 4. Get additional stats for context (office-specific)
-    const totalAttendanceToday = await prisma.attendance.count({
-      where: {
-        empId: { in: employeeIds }, // Filter by office employees
-        date: { gte: todayStartUTC, lt: todayEndUTC }
-      }
-    });
-
-    const remainingEmployees = totalEmployeesInOffice - totalAttendanceToday;
 
     // 5. Get office details for response
     const officeDetails = await prisma.office.findUnique({
