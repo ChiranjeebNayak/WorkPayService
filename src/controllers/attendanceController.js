@@ -258,12 +258,13 @@ export const getEmployeeAttendanceByMonth = async (req, res) => {
 
 
 
-// ✅ Dashboard Attendance API (IST-aware with Office filtering)
+// ✅ Dashboard Attendance API (IST-aware with Office filtering and "all" support)
 export const getTodayAttendanceDashboard = async (req, res) => {
   try {
-
     let targetOfficeId;
+    let isAllOffices = false;
     const { officeId } = req.params;
+    
     // 1. Get current IST date and create UTC range for today IST
     const currentIST = moment.tz("Asia/Kolkata");
     const todayISTDateString = currentIST.format("YYYY-MM-DD");
@@ -283,10 +284,15 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     console.log("UTC End:", todayEndUTC);
     console.log("Received officeId param:", officeId);
 
-    // 2. Determine target office
-
+    // 2. Determine target office or all offices
+    if (officeId === undefined) {
+      return res.status(400).json({ error: "officeId parameter is required" });
+    }
     
-    if (officeId !== undefined) {
+    if (officeId === "all") {
+      // Handle "all" offices case
+      isAllOffices = true;
+    } else {
       // Use the provided officeId
       targetOfficeId = Number(officeId);
       
@@ -298,34 +304,50 @@ export const getTodayAttendanceDashboard = async (req, res) => {
       if (!officeExists) {
         return res.status(404).json({ error: "Office not found" });
       }
-    } else {
-      // Get the first office if no officeId provided
-      const firstOffice = await prisma.office.findFirst({
-        orderBy: { id: 'asc' }
-      });
-      
-      if (!firstOffice) {
-        return res.status(404).json({ error: "No offices found" });
-      }
-      
-      targetOfficeId = firstOffice.id;
     }
 
-    // 3. Get all employees for the target office
-    const officeEmployees = await prisma.employee.findMany({
-      where: { 
-        officeId: targetOfficeId,
-        status: 'ACTIVE'
-      },
-      select: { id: true }
-    });
+    // 3. Get employees based on office selection
+    let employeeIds;
+    let officeDetails;
 
-    const employeeIds = officeEmployees.map(emp => emp.id);
+    if (isAllOffices) {
+      // Get all active employees from all offices
+      const allEmployees = await prisma.employee.findMany({
+        where: { 
+          status: 'ACTIVE'
+        },
+        select: { id: true }
+      });
+      
+      employeeIds = allEmployees.map(emp => emp.id);
+      officeDetails = { id: "all", name: "All Offices" };
+    } else {
+      // Get employees for specific office
+      const officeEmployees = await prisma.employee.findMany({
+        where: { 
+          officeId: targetOfficeId,
+          status: 'ACTIVE'
+        },
+        select: { id: true }
+      });
+      
+      employeeIds = officeEmployees.map(emp => emp.id);
+      
+      // Get office details for response
+      officeDetails = await prisma.office.findUnique({
+        where: { id: targetOfficeId },
+        select: { id: true, name: true }
+      });
+      
+      if (!officeDetails) {
+        return res.status(404).json({ error: "Office not found" });
+      }
+    }
 
-    // ---- Total Employees for this office ----
+    // ---- Total Employees ----
     const totalEmployees = employeeIds.length;
 
-    // ---- Attendance Today (group by status) for office employees ----
+    // ---- Attendance Today (group by status) ----
     const attendanceToday = await prisma.attendance.groupBy({
       by: ["status"],
       where: {
@@ -350,7 +372,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     const totalPresent = counts["PRESENT"] || 0;
     const totalAbsent = counts["ABSENT"] || 0;
 
-    // ---- Absent Employees List for this office ----
+    // ---- Absent Employees List ----
     const absentees = await prisma.attendance.findMany({
       where: {
         status: "ABSENT",
@@ -367,44 +389,48 @@ export const getTodayAttendanceDashboard = async (req, res) => {
       },
     });
 
-    // ---- Pending Leaves for this office employees ----
-    const pendingLeaves = await prisma.leave.findMany({
-      where: { 
-        status: "PENDING",
-        empId: { in: employeeIds }
-      },
-      orderBy: { applyDate: "desc" },
-      take: 5,
-      include: {
-        employee: { select: { id: true, name: true } },
-      },
-    });
-
     const absentList = absentees.map(a => ({
       id: a.employee.id,
       name: a.employee.name,
     }));
 
-    // Get office details for response
-    const officeDetails = await prisma.office.findUnique({
-      where: { id: targetOfficeId },
-      select: { id: true, name: true }
-    });
-
+          // ---- Get all offices ----
       const offices = await prisma.office.findMany();
 
-    // ---- Final Response ----
-    res.json({
-      date: todayISTDateString, // Current IST date
+    // ---- Prepare response based on office selection ----
+    const response = {
+      date: todayISTDateString,
       office: officeDetails,
       totalEmployees,
       totalLate,
       totalPresent,
       totalAbsent,
       absentList,
-      pendingLeaves,
       offices
-    });
+    };
+
+    // Add pendingLeaves and offices only for specific office (not for "all")
+    if (!isAllOffices) {
+      // ---- Pending Leaves for specific office ----
+      const pendingLeaves = await prisma.leave.findMany({
+        where: { 
+          status: "PENDING",
+          empId: { in: employeeIds }
+        },
+        orderBy: { applyDate: "desc" },
+        take: 5,
+        include: {
+          employee: { select: { id: true, name: true } },
+        },
+      });
+
+
+
+      response.pendingLeaves = pendingLeaves;
+    }
+
+    // ---- Final Response ----
+    res.json(response);
   } catch (error) {
     console.error("Error fetching dashboard attendance:", error);
     res.status(500).json({ error: "Failed to fetch dashboard attendance" });
@@ -858,5 +884,156 @@ export const checkBulkAttendanceStatus = async (req, res) => {
       error: "Failed to check bulk attendance status", 
       details: error.message 
     });
+  }
+};
+
+
+
+// ✅ Get Employees by Attendance Status for Today
+export const getEmployeesByAttendanceStatus = async (req, res) => {
+  try {
+    const { officeId, status } = req.params;
+
+    console.log(officeId,status)
+
+    // Validate status parameter
+    const validStatuses = ["PRESENT", "ABSENT", "LATE"];
+    if (!status || !validStatuses.includes(status.toUpperCase())) {
+      return res.status(400).json({ 
+        error: "Invalid status. Must be one of: PRESENT, ABSENT, LATE" 
+      });
+    }
+
+    const attendanceStatus = status.toUpperCase();
+
+    // Validate officeId parameter
+    if (!officeId) {
+      return res.status(400).json({ error: "officeId parameter is required" });
+    }
+
+    // 1. Get current IST date and create UTC range for today IST
+    const currentIST = moment.tz("Asia/Kolkata");
+    const todayISTDateString = currentIST.format("YYYY-MM-DD");
+    
+    // Create today's IST day boundaries and convert to UTC for DB query
+    const todayStartIST = moment.tz(todayISTDateString + " 00:00:00", "Asia/Kolkata");
+    const todayEndIST = moment.tz(todayISTDateString + " 23:59:59", "Asia/Kolkata");
+    
+    const todayStartUTC = todayStartIST.utc().toDate();
+    const todayEndUTC = todayEndIST.utc().toDate();
+    
+    console.log("Current IST:", currentIST.format("YYYY-MM-DD HH:mm:ss"));
+    console.log("Fetching employees with status:", attendanceStatus);
+    console.log("Received officeId param:", officeId);
+
+    // 2. Determine target office or all offices
+    let isAllOffices = false;
+    let targetOfficeId;
+    let employeeIds;
+    let officeDetails;
+
+    if (officeId === "all") {
+      isAllOffices = true;
+      
+      // Get all active employees from all offices
+      const allEmployees = await prisma.employee.findMany({
+        where: { 
+          status: 'ACTIVE'
+        },
+        select: { id: true }
+      });
+      
+      employeeIds = allEmployees.map(emp => emp.id);
+      officeDetails = { id: "all", name: "All Offices" };
+    } else {
+      // Use the provided officeId
+      targetOfficeId = Number(officeId);
+      
+      // Verify office exists
+      const officeExists = await prisma.office.findUnique({
+        where: { id: targetOfficeId },
+      });
+      
+      if (!officeExists) {
+        return res.status(404).json({ error: "Office not found" });
+      }
+
+      // Get employees for specific office
+      const officeEmployees = await prisma.employee.findMany({
+        where: { 
+          officeId: targetOfficeId,
+          status: 'ACTIVE'
+        },
+        select: { id: true }
+      });
+      
+      employeeIds = officeEmployees.map(emp => emp.id);
+      
+      // Get office details for response
+      officeDetails = await prisma.office.findUnique({
+        where: { id: targetOfficeId },
+        select: { id: true, name: true }
+      });
+    }
+
+    // 3. Get attendance records for today with the specified status
+    const attendanceRecords = await prisma.attendance.findMany({
+      where: {
+        status: attendanceStatus,
+        empId: { in: employeeIds },
+        date: {
+          gte: todayStartUTC,
+          lte: todayEndUTC,
+        },
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            office: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        employee: {
+          name: 'asc'
+        }
+      }
+    });
+
+    // 4. Format the response
+    const employees = attendanceRecords.map(record => ({
+      id: record.employee.id,
+      name: record.employee.name,
+      email: record.employee.email,
+      phone: record.employee.phone,
+      office: record.employee.office,
+      checkInTime: record.checkInTime ? moment(record.checkInTime).tz("Asia/Kolkata").format("HH:mm:ss") : null,
+      checkOutTime: record.checkOutTime ? moment(record.checkOutTime).tz("Asia/Kolkata").format("HH:mm:ss") : null,
+      attendanceDate: moment(record.date).tz("Asia/Kolkata").format("YYYY-MM-DD"),
+    }));
+
+    // 5. Get count
+    const totalCount = employees.length;
+
+    // ---- Final Response ----
+    res.json({
+      date: todayISTDateString,
+      office: officeDetails,
+      status: attendanceStatus,
+      totalCount,
+      employees,
+    });
+  } catch (error) {
+    console.error("Error fetching employees by attendance status:", error);
+    res.status(500).json({ error: "Failed to fetch employees by attendance status" });
   }
 };

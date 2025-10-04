@@ -1,6 +1,6 @@
 import express from "express";
 import { handleAttendance ,getEmployeeAttendanceByMonth,getTodayAttendanceDashboard ,getEmployeeAttendanceByMonthInAdmin,
-    checkBulkAttendanceStatus,markAttendanceForAbsentEmployees
+    checkBulkAttendanceStatus,markAttendanceForAbsentEmployees,getEmployeesByAttendanceStatus
 } from "../controllers/attendanceController.js";
 import { employeeAuth ,adminAuth} from "../Middleware/authMiddleware.js";
 
@@ -17,6 +17,7 @@ router.get("/checkBulkAttendanceStatus/:officeId",adminAuth, checkBulkAttendance
 router.post("/finalizeAttendance",adminAuth, markAttendanceForAbsentEmployees);
 router.post("/finalizeAttendance/:officeId",adminAuth, markAttendanceForAbsentEmployees);
 router.get("/getEmployeeAttendance",adminAuth,getEmployeeAttendanceByMonthInAdmin)
+router.get("/getEmployeesByStatus/:officeId/:status",adminAuth,getEmployeesByAttendanceStatus)
 
 
 export default router;
