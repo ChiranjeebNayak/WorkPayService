@@ -10,7 +10,8 @@ import {
   resetPasswordWithJWT,
   getEmployeeByPhone,
   getEmployeeDashboard,
-  updateEmployeeStatus
+  updateEmployeeStatus,
+  updateBankDetails
 } from "../controllers/employeeController.js";
 import { adminAuth,employeeAuth } from "../Middleware/authMiddleware.js";
 
@@ -30,6 +31,8 @@ router.post("/update-password",employeeAuth,resetPasswordWithJWT);
 router.get("/phone/:phone", getEmployeeByPhone); // Get employee by phone (to check if exists)
 
 
+
 router.get("/dashboard",employeeAuth, getEmployeeDashboard); // Get employee dashboard details
+router.put("/update-bank",employeeAuth,updateBankDetails)
 
 export default router;

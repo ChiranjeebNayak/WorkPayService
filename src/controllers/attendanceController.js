@@ -1085,7 +1085,7 @@ export const getEmployeesByAttendanceStatus = async (req, res) => {
     // 3. Get attendance records for today with the specified status
     const attendanceRecords = await prisma.attendance.findMany({
       where: {
-        status: attendanceStatus,
+        status: isAllOffices ?  { in: ["PRESENT", "LATE"] } : attendanceStatus,
         empId: { in: employeeIds },
         date: {
           gte: todayStartUTC,

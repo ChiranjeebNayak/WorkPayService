@@ -36,7 +36,7 @@ export const loginEmployee = async (req, res) => {
 export const createEmployee = async (req, res) => {
   try {
     const adminId = req.admin.id; // from adminAuth middleware
-    const { name, phone, email, password, baseSalary, overtimeRate, officeId, joinedDate } = req.body;
+    const { name, phone, email, password, baseSalary, overtimeRate, officeId, joinedDate,accountNumber,ifscCode } = req.body;
 
     if (!name || !phone || !email || !password || !baseSalary || !overtimeRate || !officeId || !adminId) {
       return res.status(400).json({ error: "All required fields must be provided" });
@@ -90,7 +90,9 @@ export const createEmployee = async (req, res) => {
           overtimeRate: Number(overtimeRate),
           officeId: Number(officeId),
           adminId: Number(adminId),
-          joinedDate: new Date(joinedDate)
+          joinedDate: new Date(joinedDate),
+          accountNumber,
+          ifscCode
         },
       });
 
@@ -132,7 +134,9 @@ export const createEmployee = async (req, res) => {
         email: result.employee.email,
         baseSalary: result.employee.baseSalary,
         overtimeRate: result.employee.overtimeRate,
-        joinedDate: result.employee.joinedDate
+        joinedDate: result.employee.joinedDate,
+        accountNumber:result.accountNumber,
+        ifscCode:result.ifscCode
       },
       holidayAttendance: {
         created: result.holidayAttendanceCount,
@@ -175,7 +179,9 @@ export const getEmployeeById = async (req, res) => {
       baseSalary: employee.baseSalary,
       overtimeRate: employee.overtimeRate,
       leaveBalance:employee.leaveBalance,
-      joinedDate:employee.joinedDate
+      joinedDate:employee.joinedDate,
+      accountNumber:employee.accountNumber,
+      ifscCode:employee.ifscCode
     } });
   } catch (error) {
     console.error("Error fetching employee:", error);
@@ -188,7 +194,7 @@ export const updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
     const adminId = req.admin.id; // from adminAuth middleware
-    const { name, phone, email, password, baseSalary, overtimeRate, officeId } = req.body;
+    const { name, phone, email, password, baseSalary, overtimeRate, officeId,accountNumber,ifscCode } = req.body;
 
     const updateData = {
       name,
@@ -198,6 +204,8 @@ export const updateEmployee = async (req, res) => {
       overtimeRate:Number(overtimeRate),
       officeId:Number(officeId),
       adminId:Number(adminId),
+      accountNumber,
+      ifscCode
     };
 
     // If password provided, hash it
@@ -217,6 +225,8 @@ export const updateEmployee = async (req, res) => {
       email: updatedEmployee.email,
       baseSalary: updatedEmployee.baseSalary,
       overtimeRate: updatedEmployee.overtimeRate,
+      accountNumber:updatedEmployee.accountNumber,
+      ifscCode:updatedEmployee.ifscCode
     } });
   } catch (error) {
     console.error("Error updating employee:", error);
@@ -399,6 +409,8 @@ export const getEmployeeDashboard = async (req, res) => {
         checkinTime: attendance ? formatTimeOnlyIST(attendance.checkInTime) : null,
         checkoutTime: attendance ? formatTimeOnlyIST(attendance.checkOutTime) : null,
         overtime: attendance ? attendance.overTime : null,
+        accountNumber:employee.accountNumber,
+        ifscCode:employee.ifscCode
       },
       officeDetails: {
         latitude: employee.office.latitude,
@@ -406,6 +418,7 @@ export const getEmployeeDashboard = async (req, res) => {
         checkin: formatTimeOnlyIST(employee.office.checkin),
         checkout: formatTimeOnlyIST(employee.office.checkout),
         breakTime: employee.office.breakTime, // in minutes
+        range:employee.office.range
       },
     };
 
@@ -413,5 +426,37 @@ export const getEmployeeDashboard = async (req, res) => {
   } catch (error) {
     console.error("Error fetching employee dashboard:", error);
     res.status(500).json({ error: "Failed to fetch dashboard details" });
+  }
+};
+
+
+
+
+// ✅ Update Employee
+export const updateBankDetails = async (req, res) => {
+  try {
+
+      const employeeId = req.employee.id;
+    const { accountNumber,ifscCode } = req.body;
+
+    const updateData = {
+      accountNumber,
+      ifscCode
+    };
+
+
+
+    const updatedEmployee = await prisma.employee.update({
+      where: { id: Number(employeeId) },
+      data: updateData,
+    });
+
+    res.json({ message: `Employee updated successfully: ${updatedEmployee.name} Bank Details`, data: {
+      accountNumber:updatedEmployee.accountNumber,
+      ifscCode:updatedEmployee.ifscCode
+    } });
+  } catch (error) {
+    console.error("Error updating employee:", error);
+    res.status(500).json({ error: "Failed to update employee" });
   }
 };
