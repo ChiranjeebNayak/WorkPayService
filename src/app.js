@@ -14,7 +14,11 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/",(req,res)=>{
-  res.send("Welcome to the WorkPay API");
+  const responsePayload = {
+    version: "1.0.0",
+    message:"Welcome to the WorkPay API"
+  }
+  res.send(responsePayload);
 })
 
 app.use("/api/admins", adminRoutes);
