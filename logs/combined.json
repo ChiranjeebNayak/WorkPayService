@@ -1,0 +1,41 @@
+{
+    "level": "info",
+    "message": "HTTP Request/Response Log",
+    "metadata": {
+        "host": "localhost",
+        "method": "POST",
+        "requestBody": {
+            "email": "admin@demo.com",
+            "password": "Admin@12dsfsdf3"
+        },
+        "requestHeaders": {
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate, br",
+            "connection": "close",
+            "content-length": "64",
+            "content-type": "application/json",
+            "host": "localhost:3000",
+            "user-agent": "Thunder Client (https://www.thunderclient.com)"
+        },
+        "responseBody": {
+            "error": "Invalid credentials"
+        },
+        "responseHeaders": {
+            "access-control-allow-origin": "*",
+            "content-length": "31",
+            "content-type": "application/json; charset=utf-8",
+            "etag": "W/\"1f-mRYQ6Yx/raK/ssDeWseqQCiH0yM\"",
+            "x-powered-by": "Express"
+        },
+        "responseTimeMs": 118,
+        "statusCode": 401,
+        "url": "/api/admins/login"
+    },
+    "timestamp": "2025-10-14T17:52:47.301Z"
+}
+{
+    "level": "http",
+    "message": "::ffff:127.0.0.1 POST /api/admins/login 401 113.543 ms - 31 query={} body={\"email\":\"admin@demo.com\",\"password\":\"Admin@12dsfsdf3\"}",
+    "metadata": {},
+    "timestamp": "2025-10-14T17:52:47.306Z"
+}
