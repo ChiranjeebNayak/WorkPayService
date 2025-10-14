@@ -8,15 +8,26 @@ import leaveRoutes from "./routes/leaveRoutes.js";
 import transactionRouter from "./routes/transactionRoutes.js"
 import holidayRoutes from "./routes/holidayRoutes.js";
 
-// imports for loggin
+// imports for logging
 import logger from "./utils/logger.js"
 import requestLogger from "./utils/requestLogger.js"
 import { httpLogger } from "./utils/httpLogger.js";
+import { requestContext } from "./utils/requestContext.js";
+import crypto from "crypto";
+import { attachDbLogger } from "./Middleware/dbLoggerMiddleware.js";
+
+
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// Logging utils use
+app.use((req, res, next) => {
+  requestContext.run({ requestId: crypto.randomUUID(), logs: [] }, next);
+});
+app.use(attachDbLogger);
 app.use(httpLogger);
 app.use(requestLogger);
 

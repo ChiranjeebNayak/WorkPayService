@@ -1,43 +1,41 @@
 import logger from "./logger.js";
+import { requestContext } from "./requestContext.js";
 
-// Middleware to log requests and responses
 export const httpLogger = (req, res, next) => {
   const { method, originalUrl, headers, body } = req;
   const startTime = Date.now();
 
-  // Capture response body
-  const oldSend = res.send;
-  res.send = function (data) {
-    res.send = oldSend; // restore original function
-    res.send(data);     // call original
+  const oldSend = res.send.bind(res); // bind correctly
 
+  res.send = function (data) {
     const responseTime = Date.now() - startTime;
 
-    // Log full request/response
-    logger.info("HTTP Request/Response Log", {
-      timestamp: new Date().toISOString(),
+    // Try parsing data only if it's a string
+    let responseBody = data;
+    if (typeof data === "string") {
+      try { responseBody = JSON.parse(data); } catch { }
+    }
+
+    const logs = requestContext.getLogs();
+    const dbLog = logs.find(log => log.dbQuery) || {};
+
+    const metadata = {
+      host: req.hostname || req.headers.host,
       method,
       url: originalUrl,
-      host: req.hostname || req.headers.host,
+      statusCode: res.statusCode,
+      responseTimeMs: responseTime,
       requestHeaders: headers,
       requestBody: body,
-      statusCode: res.statusCode,
       responseHeaders: res.getHeaders(),
-      responseBody: tryParseJson(data),
-      responseTimeMs: responseTime,
-    });
+      responseBody,
+      ...dbLog,
+    };
 
-    return data;
+    logger.info("HTTP Request/Response Log", { metadata, timestamp: new Date().toISOString() });
+
+    return oldSend(data); // call original send
   };
 
   next();
 };
-
-// Helper to safely parse JSON response body
-function tryParseJson(data) {
-  try {
-    return JSON.parse(data);
-  } catch {
-    return data;
-  }
-}
