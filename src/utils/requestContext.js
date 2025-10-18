@@ -3,20 +3,21 @@ import { AsyncLocalStorage } from "async_hooks";
 const storage = new AsyncLocalStorage();
 
 export const requestContext = {
-  run: (initialData, callback) => {
-    storage.run({ logs: [], ...initialData }, callback);
+  run: (data, callback) => {
+    storage.run({ logs: [], messageCounter: 0, ...data }, callback);
   },
-  addLog: (logEntry) => {
+  get: () => storage.getStore() || {},
+  getTxnId: () => storage.getStore()?.txnId || "-",
+  getApiName: () => storage.getStore()?.apiName || "-",
+  nextMessageNumber: () => {
     const store = storage.getStore();
-    if (store) {
-      store.logs.push({
-        ...logEntry,
-        timestamp: new Date().toISOString(),
-      });
-    }
+    if (!store) return "-";
+    store.messageCounter++;
+    return store.messageCounter;
   },
-  getLogs: () => {
+  addLog: (entry) => {
     const store = storage.getStore();
-    return store ? store.logs : [];
+    if (store) store.logs.push(entry);
   },
+  getLogs: () => storage.getStore()?.logs || [],
 };

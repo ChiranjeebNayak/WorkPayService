@@ -25,11 +25,13 @@ app.use(express.json());
 
 // Logging utils use
 app.use((req, res, next) => {
-  requestContext.run({ requestId: crypto.randomUUID(), logs: [] }, next);
+  const txnId = req.headers["x-transaction-id"] || crypto.randomUUID();
+  const apiName = req.originalUrl;
+  requestContext.run({ txnId, apiName, logs: [], messageCounter: 0 }, () => next());
 });
+
 app.use(attachDbLogger);
 app.use(httpLogger);
-app.use(requestLogger);
 
 app.get("/", (req, res) => {
   const responsePayload = {

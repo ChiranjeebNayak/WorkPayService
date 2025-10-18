@@ -5,33 +5,20 @@ export const logDbQuery = async (query, params, executor) => {
   try {
     const result = await executor();
     const duration = Date.now() - start;
-
     requestContext.addLog({
       dbQuery: query,
       dbParams: params,
-      dbResponse: trySafeStringify(result),
       dbExecutionTimeMs: duration,
     });
-
     return result;
-  } catch (error) {
+  } catch (err) {
     const duration = Date.now() - start;
-
     requestContext.addLog({
       dbQuery: query,
       dbParams: params,
-      dbError: error.message,
+      dbError: err.message,
       dbExecutionTimeMs: duration,
     });
-
-    throw error;
+    throw err;
   }
 };
-
-function trySafeStringify(data) {
-  try {
-    return JSON.parse(JSON.stringify(data));
-  } catch {
-    return data;
-  }
-}

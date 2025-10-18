@@ -2,39 +2,57 @@ import logger from "./logger.js";
 import { requestContext } from "./requestContext.js";
 
 export const httpLogger = (req, res, next) => {
-  const { method, originalUrl, headers, body } = req;
-  const startTime = Date.now();
-
-  const oldSend = res.send.bind(res); // bind correctly
+  const start = Date.now();
+  const oldSend = res.send.bind(res);
 
   res.send = function (data) {
-    const responseTime = Date.now() - startTime;
+    // Re-run inside the original context to ensure AsyncLocalStorage works
+    const ctx = requestContext.get();
+    const { txnId, apiName } = ctx;
+    const duration = Date.now() - start;
 
-    // Try parsing data only if it's a string
     let responseBody = data;
     if (typeof data === "string") {
       try { responseBody = JSON.parse(data); } catch { }
     }
 
-    const logs = requestContext.getLogs();
-    const dbLog = logs.find(log => log.dbQuery) || {};
+    const dbLogs = requestContext.getLogs().filter(l => l.dbQuery);
 
-    const metadata = {
-      host: req.hostname || req.headers.host,
-      method,
-      url: originalUrl,
-      statusCode: res.statusCode,
-      responseTimeMs: responseTime,
-      requestHeaders: headers,
-      requestBody: body,
-      responseHeaders: res.getHeaders(),
-      responseBody,
-      ...dbLog,
-    };
+    // 1️⃣ Incoming
+    logger.info("Incoming API Call", {
+      metadata: {
+        apiName,
+        messageNumber: requestContext.nextMessageNumber(),
+        txnId,
+        req_header: req.headers,
+        req_body: req.body,
+      }
+    });
 
-    logger.info("HTTP Request/Response Log", { metadata, timestamp: new Date().toISOString() });
+    // 2️⃣ DB Logs
+    dbLogs.forEach((l) => {
+      logger.info("Database Query", {
+        metadata: {
+          apiName,
+          messageNumber: requestContext.nextMessageNumber(),
+          txnId,
+          message: `${l.dbQuery} (Time: ${l.dbExecutionTimeMs}ms)`
+        }
+      });
+    });
 
-    return oldSend(data); // call original send
+    // 3️⃣ Outgoing
+    logger.info("Outgoing API Response", {
+      metadata: {
+        apiName,
+        messageNumber: requestContext.nextMessageNumber(),
+        txnId,
+        message: `Completed in ${duration}ms`,
+        res_body: responseBody,
+      }
+    });
+
+    return oldSend(data);
   };
 
   next();
