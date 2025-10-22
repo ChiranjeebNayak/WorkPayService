@@ -16,7 +16,7 @@ export const httpLogger = (req, res, next) => {
       try { responseBody = JSON.parse(data); } catch { }
     }
 
-    const dbLogs = requestContext.getLogs().filter(l => l.dbQuery);
+    const dbLogs = requestContext.getLogs();
 
     // 1️⃣ Incoming
     logger.info("Incoming API Call", {
@@ -36,7 +36,9 @@ export const httpLogger = (req, res, next) => {
           apiName,
           messageNumber: requestContext.nextMessageNumber(),
           txnId,
-          message: `${l.dbQuery} (Time: ${l.dbExecutionTimeMs}ms)`
+          dbQuery: l.dbQuery,          // raw SQL string
+          dbParams: l.dbParams,
+          dbExecutionTimeMs: l.dbExecutionTimeMs,
         }
       });
     });

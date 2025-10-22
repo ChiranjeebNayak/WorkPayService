@@ -30,6 +30,9 @@ const logger = winston.createLogger({
       if (metadata.req_header) logEntry.req_header = metadata.req_header
       if (metadata.req_body) logEntry.req_body = metadata.req_body
       if (metadata.res_body) logEntry.res_body = metadata.res_body
+      if (metadata.dbQuery) logEntry.db_query = metadata.dbQuery
+      if (metadata.dbParams) logEntry.db_params = metadata.dbParams
+      if (metadata.dbExecutionTimeMs) logEntry.db_duration_ms = metadata.dbExecutionTimeMs
 
       return colorizeJSON(logEntry)
     })
