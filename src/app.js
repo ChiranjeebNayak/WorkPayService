@@ -10,7 +10,6 @@ import holidayRoutes from "./routes/holidayRoutes.js";
 
 // imports for logging
 import logger from "./utils/logger.js"
-import requestLogger from "./utils/requestLogger.js"
 import { httpLogger } from "./utils/httpLogger.js";
 import { requestContext } from "./utils/requestContext.js";
 import crypto from "crypto";
@@ -27,7 +26,7 @@ app.use(express.json());
 app.use((req, res, next) => {
   const txnId = req.headers["x-transaction-id"] || crypto.randomUUID();
   const apiName = req.originalUrl;
-  requestContext.run({ txnId, apiName, logs: [], messageCounter: 0 }, () => next());
+  requestContext.run({ txnId, apiName }, () => next());
 });
 
 app.use(attachDbLogger);
@@ -50,8 +49,9 @@ app.use("/api/transactions", transactionRouter);
 app.use("/api/holidays", holidayRoutes);
 
 app.use((err, req, res, next) => {
-  logger.error(`${req.method} ${req.url} - ${err.message}`, { stack: err.stack });
-  res.status(500).json({ error: "Internal Server Error" });
+  const txnId = requestContext.getTxnId();
+  logger.error(`${req.method} ${req.url} [${txnId}] - ${err.message}`, { stack: err.stack });
+  res.status(500).json({ error: "Internal Server Error", txnId });
 });
 
 export default app;

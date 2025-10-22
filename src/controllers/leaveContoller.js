@@ -1,4 +1,3 @@
-import prisma from "../prisma.js";
 import moment from "moment-timezone";
 
 // ---------------- Helper ----------------
@@ -32,7 +31,7 @@ export const applyLeave = async (req, res) => {
     }
 
     // 1️⃣ Overlapping leave check
-    const existingLeaves = await prisma.leave.findMany({
+    const existingLeaves = await req.db.leave.findMany({
       where: {
         empId: Number(empId),
         OR: [
@@ -77,7 +76,7 @@ export const applyLeave = async (req, res) => {
     }
 
     // 2️⃣ Fetch holidays in range
-    const holidays = await prisma.holiday.findMany({
+    const holidays = await req.db.holiday.findMany({
       where: {
         date: {
           gte: fromDateUTC,
@@ -120,7 +119,7 @@ export const applyLeave = async (req, res) => {
     }
 
     // 4️⃣ Fetch employee leave balance
-    const employee = await prisma.employee.findUnique({
+    const employee = await req.db.employee.findUnique({
       where: { id: Number(empId) },
       select: { leaveBalance: true },
     });
@@ -133,7 +132,7 @@ export const applyLeave = async (req, res) => {
     // 5️⃣ Apply leave logic
     if (employee.leaveBalance <= 0) {
       // All unpaid
-      const leave = await prisma.leave.create({
+      const leave = await req.db.leave.create({
         data: {
           empId: Number(empId),
           reason,
@@ -146,7 +145,7 @@ export const applyLeave = async (req, res) => {
       leaveApplications.push(leave);
     } else if (employee.leaveBalance >= totalWorkingDays) {
       // All paid
-      const leave = await prisma.leave.create({
+      const leave = await req.db.leave.create({
         data: {
           empId: Number(empId),
           reason,
@@ -162,7 +161,7 @@ export const applyLeave = async (req, res) => {
       const paidDays = employee.leaveBalance;
       const unpaidDays = totalWorkingDays - paidDays;
 
-      const paidLeave = await prisma.leave.create({
+      const paidLeave = await req.db.leave.create({
         data: {
           empId: Number(empId),
           reason,
@@ -173,7 +172,7 @@ export const applyLeave = async (req, res) => {
         },
       });
 
-      const unpaidLeave = await prisma.leave.create({
+      const unpaidLeave = await req.db.leave.create({
         data: {
           empId: Number(empId),
           reason,
@@ -219,7 +218,7 @@ export const getLeaveSummary = async (req, res) => {
       targetOfficeId = Number(officeId);
       
       // Verify office exists
-      const officeExists = await prisma.office.findUnique({
+      const officeExists = await req.db.office.findUnique({
         where: { id: targetOfficeId },
         select: { id: true, name: true }
       });
@@ -229,7 +228,7 @@ export const getLeaveSummary = async (req, res) => {
       }
     } else {
       // Get the first office if no officeId provided
-      const firstOffice = await prisma.office.findFirst({
+      const firstOffice = await req.db.office.findFirst({
         orderBy: { id: 'asc' },
         select: { id: true, name: true }
       });
@@ -242,7 +241,7 @@ export const getLeaveSummary = async (req, res) => {
     }
 
     // 2. Get all active employees for the target office
-    const officeEmployees = await prisma.employee.findMany({
+    const officeEmployees = await req.db.employee.findMany({
       where: { 
         officeId: targetOfficeId,
         status: 'ACTIVE'
@@ -254,7 +253,7 @@ export const getLeaveSummary = async (req, res) => {
     
     console.log("DEBUG - Total active employees in office:", employeeIds.length);
 
-    const office = await prisma.office.findUnique({
+    const office = await req.db.office.findUnique({
       where: { id: targetOfficeId },
       select: { id: true, name: true }
     });
@@ -271,7 +270,7 @@ export const getLeaveSummary = async (req, res) => {
 
     // 3. Fetch leaves filtered by office employees
     const fetchLeaves = async (status) => {
-      return prisma.leave.findMany({
+      return req.db.leave.findMany({
         where: { 
           status,
           empId: { in: employeeIds } // Filter by office employees
@@ -296,7 +295,7 @@ export const getLeaveSummary = async (req, res) => {
       }));
 
     // 4. Get office details for response
-    const officeDetails = await prisma.office.findUnique({
+    const officeDetails = await req.db.office.findUnique({
       where: { id: targetOfficeId },
       select: { id: true, name: true }
     });
@@ -334,7 +333,7 @@ export const updateLeaveStatus = async (req, res) => {
       return res.status(400).json({ error: "Invalid leaveId or status" });
     }
 
-    const leave = await prisma.leave.findUnique({
+    const leave = await req.db.leave.findUnique({
       where: { id: Number(leaveId) },
       include: { 
         employee: { 
@@ -354,7 +353,7 @@ export const updateLeaveStatus = async (req, res) => {
     let deductionDetails = [];
 
     if (status === "APPROVED" && leave.type === "PAID") {
-      await prisma.employee.update({
+      await req.db.employee.update({
         where: { id: leave.empId },
         data: { leaveBalance: { decrement: leave.totalDays } },
       });
@@ -397,12 +396,12 @@ export const updateLeaveStatus = async (req, res) => {
       }
 
       if (transactions.length > 0) {
-        await prisma.transaction.createMany({ data: transactions });
+        await req.db.transaction.createMany({ data: transactions });
         console.log(`DEBUG - Created ${transactions.length} deduction transactions for unpaid leave. Total: ₹${totalDeductionAmount}`);
       }
     }
 
-    const updatedLeave = await prisma.leave.update({
+    const updatedLeave = await req.db.leave.update({
       where: { id: Number(leaveId) },
       data: { status },
       include: { 
@@ -466,7 +465,7 @@ export const getLeavesByYear = async (req, res) => {
       .utc()
       .toDate();
 
-    const leaves = await prisma.leave.findMany({
+    const leaves = await req.db.leave.findMany({
       where: {
         empId: Number(empId),
         fromDate: { gte: startUTC },
@@ -510,7 +509,7 @@ export const getEmployeeLeaveHistory = async (req, res) => {
       .utc()
       .toDate();
 
-    const leaves = await prisma.leave.findMany({
+    const leaves = await req.db.leave.findMany({
       where: {
         empId: Number(empId),
         fromDate: { gte: startUTC },

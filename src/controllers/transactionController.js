@@ -1,4 +1,3 @@
-import prisma from "../prisma.js";
 import moment from "moment-timezone";
 
 // Helper: convert UTC date to IST string
@@ -15,7 +14,7 @@ export const addTransaction = async (req, res) => {
       return res.status(400).json({ error: "empId, amount and type are required" });
     }
 
-    const employee = await prisma.employee.findUnique({ where: { id: Number(empId) } });
+    const employee = await req.db.employee.findUnique({ where: { id: Number(empId) } });
     if (!employee) return res.status(404).json({ error: "Employee not found" });
 
     if (employee.status !== "ACTIVE") {
@@ -31,7 +30,7 @@ export const addTransaction = async (req, res) => {
       const monthStartUTC = istNow.clone().startOf("month").utc().toDate();
       const monthEndUTC = istNow.clone().endOf("month").utc().toDate();
 
-      const existingSalary = await prisma.transaction.findFirst({
+      const existingSalary = await req.db.transaction.findFirst({
         where: {
           empId: Number(empId),
           payType: "SALARY",
@@ -47,7 +46,7 @@ export const addTransaction = async (req, res) => {
     }
 
     // Create transaction record (store UTC)
-    const transaction = await prisma.transaction.create({
+    const transaction = await req.db.transaction.create({
       data: {
         empId: Number(empId),
         amount: Number(amount),
@@ -84,7 +83,7 @@ export const getEmployeeTransactions = async (req, res) => {
     const empIdNum = Number(empId);
     const yearNum = Number(year);
 
-    const employee = await prisma.employee.findUnique({
+    const employee = await req.db.employee.findUnique({
       where: { id: empIdNum },
       select: { baseSalary: true }
     });
@@ -95,7 +94,7 @@ export const getEmployeeTransactions = async (req, res) => {
     const yearStartUTC = moment.tz(`${year}-01-01 00:00:00`, "Asia/Kolkata").startOf("year").utc().toDate();
     const yearEndUTC = moment.tz(`${year}-01-01 00:00:00`, "Asia/Kolkata").endOf("year").utc().toDate();
 
-    const transactions = await prisma.transaction.findMany({
+    const transactions = await req.db.transaction.findMany({
       where: { empId: empIdNum, date: { gte: yearStartUTC, lte: yearEndUTC } },
       orderBy: { date: "asc" }
     });
@@ -147,7 +146,7 @@ export const getMonthlyTransactions = async (req, res) => {
     const isCurrentMonth = currentMonthIST.isSame(requestedMonthIST, 'month') && currentMonthIST.isSame(requestedMonthIST, 'year');
 
     // Get transactions for this month
-    const transactions = await prisma.transaction.findMany({
+    const transactions = await req.db.transaction.findMany({
       where: { date: { gte: monthStartUTC, lte: monthEndUTC } },
       orderBy: { date: "asc" },
       include: { employee: { select: { id: true, name: true, phone: true, baseSalary: true } } }
@@ -157,7 +156,7 @@ export const getMonthlyTransactions = async (req, res) => {
 
     if (isCurrentMonth) {
       // CURRENT MONTH: Show ALL employees (even those without transactions)
-      const allEmployees = await prisma.employee.findMany({
+      const allEmployees = await req.db.employee.findMany({
         select: { id: true, name: true, phone: true, baseSalary: true }
       });
 
@@ -227,7 +226,7 @@ export const getEmployeeTransactionsAdmin = async (req, res) => {
     const empIdNum = Number(empId);
     const yearNum = Number(year);
 
-    const employee = await prisma.employee.findUnique({
+    const employee = await req.db.employee.findUnique({
       where: { id: empIdNum },
       select: { baseSalary: true }
     });
@@ -236,7 +235,7 @@ export const getEmployeeTransactionsAdmin = async (req, res) => {
     const yearStartUTC = moment.tz([yearNum, 0, 1], "Asia/Kolkata").startOf("year").utc().toDate();
     const yearEndUTC = moment.tz([yearNum, 0, 1], "Asia/Kolkata").endOf("year").utc().toDate();
 
-    const transactions = await prisma.transaction.findMany({
+    const transactions = await req.db.transaction.findMany({
       where: { empId: empIdNum, date: { gte: yearStartUTC, lte: yearEndUTC } },
       orderBy: { date: "desc" }
     });

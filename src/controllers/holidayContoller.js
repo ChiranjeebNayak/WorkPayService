@@ -1,4 +1,3 @@
-import prisma from "../prisma.js";
 import moment from "moment-timezone";
 
 
@@ -29,7 +28,7 @@ export const getHolidaysByYear = async (req, res) => {
     const startOfYear = new Date(year, 0, 1);
     const endOfYear = new Date(year + 1, 0, 1);
 
-    const holidays = await prisma.holiday.findMany({
+    const holidays = await req.db.holiday.findMany({
       where: {
         date: {
           gte: startOfYear,
@@ -91,7 +90,7 @@ export const addHoliday = async (req, res) => {
     console.log("DEBUG - Converted back to IST:", toISTDateString(holidayDateUTC));
 
     // Check if holiday already exists on this date
-    const existingHoliday = await prisma.holiday.findFirst({
+    const existingHoliday = await req.db.holiday.findFirst({
       where: {
         date: holidayDateUTC
       }
@@ -108,7 +107,7 @@ export const addHoliday = async (req, res) => {
     }
 
     // Get all employees to create attendance records
-    const employees = await prisma.employee.findMany({
+    const employees = await req.db.employee.findMany({
       select: { id: true }
     });
 
@@ -117,7 +116,7 @@ export const addHoliday = async (req, res) => {
     }
 
     // Check if any attendance records already exist for this date
-    const existingAttendance = await prisma.attendance.findMany({
+    const existingAttendance = await req.db.attendance.findMany({
       where: {
         date: holidayDateUTC
       }
@@ -131,7 +130,7 @@ export const addHoliday = async (req, res) => {
     }
 
     // Use transaction to ensure both holiday and attendance records are created atomically
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await req.db.$transaction(async (tx) => {
       // Create the holiday
       const holiday = await tx.holiday.create({
         data: {
@@ -184,7 +183,7 @@ export const deleteHoliday = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const holiday = await prisma.holiday.findUnique({ where: { id: Number(id) } });
+    const holiday = await req.db.holiday.findUnique({ where: { id: Number(id) } });
     if (!holiday) {
       return res.status(404).json({ error: "Holiday not found" });
     }
@@ -197,7 +196,7 @@ export const deleteHoliday = async (req, res) => {
     console.log("DEBUG - Holiday date IST:", toISTDateString(holidayDate));
 
     // Find all attendance records with HOLIDAY status for this date
-    const holidayAttendances = await prisma.attendance.findMany({
+    const holidayAttendances = await req.db.attendance.findMany({
       where: {
         date: holidayDate,
         status: "HOLIDAY"
@@ -207,7 +206,7 @@ export const deleteHoliday = async (req, res) => {
     console.log(`DEBUG - Found ${holidayAttendances.length} holiday attendance records to delete`);
 
     // Use transaction to ensure both holiday and attendance records are deleted atomically
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await req.db.$transaction(async (tx) => {
       // Delete all attendance records with HOLIDAY status for this date
       const deletedAttendances = await tx.attendance.deleteMany({
         where: {
