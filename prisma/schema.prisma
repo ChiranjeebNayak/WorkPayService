@@ -13,7 +13,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 enum PayType {
   ADVANCE
   SALARY
@@ -35,8 +34,8 @@ enum LeaveType {
 enum attendanceStatus {
   PRESENT
   ABSENT
-  LATE 
-  LEAVE  
+  LATE
+  LEAVE
   HOLIDAY
 }
 
@@ -45,13 +44,12 @@ enum EmployeeActiveStatus {
   INACTIVE
 }
 
-
 model Admin {
-  id       Int       @id @default(autoincrement())
-  name     String
-  phone    String    @unique
-  email    String    @unique
-  password String
+  id        Int        @id @default(autoincrement())
+  name      String
+  phone     String     @unique
+  email     String     @unique
+  password  String
   employees Employee[]
 }
 
@@ -62,9 +60,9 @@ model Office {
   longitude Float
   checkin   DateTime
   checkout  DateTime
-  breakTime Int @default(0)
+  breakTime Int        @default(0)
   employees Employee[]
-  range     Int @default(1000)
+  range     Int        @default(1000)
 }
 
 model Holiday {
@@ -74,52 +72,50 @@ model Holiday {
 }
 
 model Employee {
-  id           Int           @id @default(autoincrement())
-  name         String
-  phone        String        @unique
-  email        String        @unique
-  joinedDate   DateTime? 
-  password     String
-  baseSalary   Int
-  overtimeRate Int
-  leaveBalance Int           @default(10)   // initial balance, will decrease as leaves are approved
-  status       EmployeeActiveStatus @default(ACTIVE)
-  officeId     Int
-  adminId      Int 
+  id            Int                  @id @default(autoincrement())
+  name          String
+  phone         String               @unique
+  email         String               @unique
+  joinedDate    DateTime?
+  password      String
+  baseSalary    Int
+  overtimeRate  Int
+  leaveBalance  Int                  @default(10) // initial balance, will decrease as leaves are approved
+  status        EmployeeActiveStatus @default(ACTIVE)
+  officeId      Int
+  adminId       Int
   accountNumber String?
-  ifscCode     String?
-  office       Office @relation(fields: [officeId], references: [id])
-  admin        Admin  @relation(fields: [adminId], references: [id])
-  leaves       Leave[]
-  attendances  Attendance[]
-  transactions Transaction[]
+  ifscCode      String?
+  office        Office               @relation(fields: [officeId], references: [id])
+  admin         Admin                @relation(fields: [adminId], references: [id])
+  leaves        Leave[]
+  attendances   Attendance[]
+  transactions  Transaction[]
 }
 
-
 model Leave {
-  id        Int          @id @default(autoincrement())
+  id        Int         @id @default(autoincrement())
   empId     Int
   reason    String
-  applyDate DateTime     @default(now())
+  applyDate DateTime    @default(now())
   fromDate  DateTime
   toDate    DateTime
   totalDays Int
-  type      LeaveType    
-  status    LeaveStatus  @default(PENDING)
-  employee  Employee     @relation(fields: [empId], references: [id])
+  type      LeaveType
+  status    LeaveStatus @default(PENDING)
+  employee  Employee    @relation(fields: [empId], references: [id])
 }
 
 model Attendance {
-  id           Int       @id @default(autoincrement())
+  id           Int              @id @default(autoincrement())
   empId        Int
   date         DateTime
-  checkInTime  DateTime?   // nullable
-  checkOutTime DateTime?   // nullable
+  checkInTime  DateTime? // nullable
+  checkOutTime DateTime? // nullable
   overTime     Int
   status       attendanceStatus
-  employee     Employee    @relation(fields: [empId], references: [id])
+  employee     Employee         @relation(fields: [empId], references: [id])
 }
-
 
 model Transaction {
   id          Int      @id @default(autoincrement())

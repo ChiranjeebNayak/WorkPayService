@@ -1,4 +1,3 @@
-import prisma from "../prisma.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import moment from "moment-timezone";
@@ -10,7 +9,7 @@ export const loginEmployee = async (req, res) => {
   try {
     const { phone, password } = req.body;
 
-    const employee = await prisma.employee.findUnique({ where: { phone } });
+    const employee = await req.db.employee.findUnique({ where: { phone } });
     if (!employee) return res.status(404).json({ error: "Employee not found" });
 
     if (employee.status !== "ACTIVE") {
@@ -42,12 +41,12 @@ export const createEmployee = async (req, res) => {
       return res.status(400).json({ error: "All required fields must be provided" });
     }
 
-    const existingPhone = await prisma.employee.findUnique({ where: { phone } });
+    const existingPhone = await req.db.employee.findUnique({ where: { phone } });
     if (existingPhone) {
       return res.status(400).json({ error: "Employee with this phone number already exists" });
     }
 
-    const existingEmail = await prisma.employee.findUnique({ where: { email } });
+    const existingEmail = await req.db.employee.findUnique({ where: { email } });
     if (existingEmail) {
       return res.status(400).json({ error: "Employee with this email already exists" });
     }
@@ -64,7 +63,7 @@ export const createEmployee = async (req, res) => {
     console.log("DEBUG - Employee creation date UTC:", todayUTC);
 
     // Get all holidays that are on or after TODAY (employee creation date)
-    const upcomingHolidays = await prisma.holiday.findMany({
+    const upcomingHolidays = await req.db.holiday.findMany({
       where: {
         date: {
           gte: todayUTC // Holidays on or after today
@@ -78,7 +77,7 @@ export const createEmployee = async (req, res) => {
     console.log(`DEBUG - Found ${upcomingHolidays.length} holidays on or after today`);
 
     // Use transaction to create employee and holiday attendance records atomically
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await req.db.$transaction(async (tx) => {
       // Create the employee
       const employee = await tx.employee.create({
         data: {
@@ -152,7 +151,7 @@ export const createEmployee = async (req, res) => {
 // ✅ Get all employees
 export const getEmployees = async (req, res) => {
   try {
-    const employees = await prisma.employee.findMany({
+    const employees = await req.db.employee.findMany({
     });
     res.json(employees);
   } catch (error) {
@@ -165,7 +164,7 @@ export const getEmployees = async (req, res) => {
 export const getEmployeeById = async (req, res) => {
   try {
     const { id } = req.params;
-    const employee = await prisma.employee.findUnique({
+    const employee = await req.db.employee.findUnique({
       where: { id: Number(id) },
     });
 
@@ -213,7 +212,7 @@ export const updateEmployee = async (req, res) => {
       updateData.password = await bcrypt.hash(password, 10);
     }
 
-    const updatedEmployee = await prisma.employee.update({
+    const updatedEmployee = await req.db.employee.update({
       where: { id: Number(id) },
       data: updateData,
     });
@@ -242,7 +241,7 @@ export const updateEmployeeStatus = async (req, res) => {
     if (!["ACTIVE", "INACTIVE"].includes(status)) {
       return res.status(400).json({ error: "Invalid status value" });
     }
-    const updatedEmployee = await prisma.employee.update({
+    const updatedEmployee = await req.db.employee.update({
       where: { id: Number(id) },
       data: { status },
     });
@@ -258,7 +257,7 @@ export const deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;
 
-    await prisma.employee.delete({
+    await req.db.employee.delete({
       where: { id: Number(id) },
     });
 
@@ -280,7 +279,7 @@ export const resetPasswordWithJWT = async (req, res) => {
     }
 
     // req.employee comes from employeeAuth middleware
-    const employee = await prisma.employee.findUnique({
+    const employee = await req.db.employee.findUnique({
       where: { id: req.employee.id },
     });
 
@@ -295,7 +294,7 @@ export const resetPasswordWithJWT = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    await prisma.employee.update({
+    await req.db.employee.update({
       where: { id: employee.id },
       data: { password: hashedPassword },
     });
@@ -316,14 +315,14 @@ export const resetPasswordWithPhone = async (req, res) => {
       return res.status(400).json({ error: "Phone and new password required" });
     }
 
-    const employee = await prisma.employee.findUnique({ where: { phone } });
+    const employee = await req.db.employee.findUnique({ where: { phone } });
     if (!employee) {
       return res.status(404).json({ error: "Employee not found" });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    await prisma.employee.update({
+    await req.db.employee.update({
       where: { phone },
       data: { password: hashedPassword },
     });
@@ -344,7 +343,7 @@ export const getEmployeeByPhone = async (req, res) => {
       return res.status(400).json({ error: "Phone number required" });
     }
 
-    const employee = await prisma.employee.findUnique({ where: { phone } });
+    const employee = await req.db.employee.findUnique({ where: { phone } });
 
     res.json({ employeeFound: !!employee });
   } catch (error) {
@@ -374,7 +373,7 @@ export const getEmployeeDashboard = async (req, res) => {
     const employeeId = req.employee.id;
 
     // Fetch employee with office details
-    const employee = await prisma.employee.findUnique({
+    const employee = await req.db.employee.findUnique({
       where: { id: employeeId },
       include: { office: true },
     });
@@ -388,7 +387,7 @@ export const getEmployeeDashboard = async (req, res) => {
     const todayEndUTC = moment.tz("Asia/Kolkata").endOf("day").utc().toDate();
 
     // ✅ Find today's attendance in UTC
-    const attendance = await prisma.attendance.findFirst({
+    const attendance = await req.db.attendance.findFirst({
       where: {
         empId: employeeId,
         date: { gte: todayStartUTC, lte: todayEndUTC },
@@ -446,7 +445,7 @@ export const updateBankDetails = async (req, res) => {
 
 
 
-    const updatedEmployee = await prisma.employee.update({
+    const updatedEmployee = await req.db.employee.update({
       where: { id: Number(employeeId) },
       data: updateData,
     });

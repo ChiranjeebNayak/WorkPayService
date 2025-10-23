@@ -1,4 +1,4 @@
-import prisma from "../prisma.js";
+
 
 // Create office (only if it does not exist)
 export const createOffice = async (req, res) => {
@@ -19,7 +19,7 @@ export const createOffice = async (req, res) => {
     console.log('Checkout UTC:', checkout);
     console.log('Break Time:', breakTime);
 
-    const office = await prisma.office.create({
+    const office = await req.db.office.create({
       data: {
         name,
         latitude,
@@ -47,7 +47,7 @@ export const createOffice = async (req, res) => {
 // ✅ Get Office Settings 
 export const getOffices = async (req, res) => {
   try {
-    const offices = await prisma.office.findMany();
+    const offices = await req.db.office.findMany();
     if (!offices || offices.length === 0) {
       return res.status(404).json({ error: "No office settings found" });
     }
@@ -66,7 +66,7 @@ export const updateOffice = async (req, res) => {
     const { id } = req.params;
     const {name, latitude, longitude, checkin, checkout ,breakTime,range} = req.body;
 
-    const office = await prisma.office.findFirst(
+    const office = await req.db.office.findFirst(
       {
         where: { id: Number(id) }
       }
@@ -85,7 +85,7 @@ export const updateOffice = async (req, res) => {
       range:Number(range)
     };
 
-    const updatedOffice = await prisma.office.update({
+    const updatedOffice = await req.db.office.update({
       where: { id: office.id },
       data: updateData,
     });
@@ -101,7 +101,7 @@ export const updateOffice = async (req, res) => {
 export const deleteOffice = async (req, res) => {
   try {
     const { id } = req.params;
-    const office = await prisma.office.findFirst(
+    const office = await req.db.office.findFirst(
       {
         where: { id: Number(id) }
       }
@@ -110,7 +110,7 @@ export const deleteOffice = async (req, res) => {
       return res.status(404).json({ error: "Office settings not found" });
     }
 
-    const associatedEmployees = await prisma.employee.findMany({
+    const associatedEmployees = await req.db.employee.findMany({
       where: { officeId: office.id },
       select: { id: true, name: true }
     });
@@ -121,7 +121,7 @@ export const deleteOffice = async (req, res) => {
       });
     }
 
-    await prisma.office.delete({
+    await req.db.office.delete({
       where: { id: office.id }
     });
 

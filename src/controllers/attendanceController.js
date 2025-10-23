@@ -1,4 +1,3 @@
-import prisma from "../prisma.js";
 import moment from "moment-timezone";
 
 // Convert UTC date to IST string for response
@@ -32,7 +31,7 @@ const getTodayOfficeTimeUTC = (storedOfficeTime) => {
 
 // Check if employee has approved leave for a specific date
 const hasApprovedLeaveForDate = async (empId, targetDateUTC) => {
-  const leave = await prisma.leave.findFirst({
+  const leave = await req.db.leave.findFirst({
     where: {
       empId: empId,
       status: "APPROVED",
@@ -55,13 +54,13 @@ export const handleAttendance = async (req, res) => {
     const nowUTC = getCurrentUTC();
     const { startUTC: todayStartUTC, endUTC: todayEndUTC } = getISTRangeUTC(nowUTC);
 
-    const employee = await prisma.employee.findUnique({
+    const employee = await req.db.employee.findUnique({
       where: { id: Number(employeeId) },
       select: { id: true, name: true, status: true , officeId: true },
     });
 
     // Fetch office timings
-    const office = await prisma.office.findFirst({
+    const office = await req.db.office.findFirst({
       where: { id: employee.officeId }
     });
     if (!office) return res.status(404).json({ error: "Office details not found" });
@@ -80,7 +79,7 @@ export const handleAttendance = async (req, res) => {
     console.log("DEBUG - Office checkout IST:", toISTString(officeCheckoutUTC));
 
     // Fetch today's attendance
-    let attendance = await prisma.attendance.findFirst({
+    let attendance = await req.db.attendance.findFirst({
       where: {
         empId: Number(employeeId),
         date: { gte: todayStartUTC, lt: todayEndUTC },
@@ -95,7 +94,7 @@ export const handleAttendance = async (req, res) => {
       const lateThresholdUTC = new Date(officeCheckinUTC.getTime() + 30 * 60 * 1000);
       const status = nowUTC <= lateThresholdUTC ? "PRESENT" : "LATE";
 
-      attendance = await prisma.attendance.create({
+      attendance = await req.db.attendance.create({
         data: {
           date: todayStartUTC,
           checkInTime: nowUTC,
@@ -121,7 +120,7 @@ export const handleAttendance = async (req, res) => {
       if (attendance.checkOutTime)
         return res.status(400).json({ message: "Employee already checked out today", attendance });
 
-      const employee = await prisma.employee.findUnique({
+      const employee = await req.db.employee.findUnique({
         where: { id: Number(employeeId) },
         select: { overtimeRate: true },
       });
@@ -132,7 +131,7 @@ export const handleAttendance = async (req, res) => {
       const totalOfficeMinutes = Math.floor((officeCheckoutUTC - officeCheckinUTC) / (1000 * 60));
       const overtimeMinutes = totalWorkedMinutes > totalOfficeMinutes ? totalWorkedMinutes - totalOfficeMinutes : 0;
 
-      attendance = await prisma.attendance.update({
+      attendance = await req.db.attendance.update({
         where: { id: attendance.id },
         data: { checkOutTime: nowUTC, overTime: overtimeMinutes, employee: { connect: { id: Number(employeeId) } } },
       });
@@ -142,7 +141,7 @@ export const handleAttendance = async (req, res) => {
         const overtimeHours = overtimeMinutes / 60;
         const overtimePay = overtimeHours * employee.overtimeRate;
 
-        await prisma.transaction.create({
+        await req.db.transaction.create({
           data: {
             empId: Number(employeeId),
             amount: overtimePay,
@@ -219,7 +218,7 @@ export const getEmployeeAttendanceByMonth = async (req, res) => {
     console.log("DEBUG - End UTC:", monthEndUTC);
 
     // 3. Fetch attendance records
-    const attendanceRecords = await prisma.attendance.findMany({
+    const attendanceRecords = await req.db.attendance.findMany({
       where: {
         empId: Number(empId),
         date: {
@@ -297,7 +296,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
       targetOfficeId = Number(officeId);
       
       // Verify office exists
-      const officeExists = await prisma.office.findUnique({
+      const officeExists = await req.db.office.findUnique({
         where: { id: targetOfficeId },
       });
       
@@ -312,7 +311,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
 
     if (isAllOffices) {
       // Get all active employees from all offices
-      const allEmployees = await prisma.employee.findMany({
+      const allEmployees = await req.db.employee.findMany({
         where: { 
           status: 'ACTIVE'
         },
@@ -323,7 +322,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
       officeDetails = { id: "all", name: "All Offices" };
     } else {
       // Get employees for specific office
-      const officeEmployees = await prisma.employee.findMany({
+      const officeEmployees = await req.db.employee.findMany({
         where: { 
           officeId: targetOfficeId,
           status: 'ACTIVE'
@@ -334,7 +333,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
       employeeIds = officeEmployees.map(emp => emp.id);
       
       // Get office details for response
-      officeDetails = await prisma.office.findUnique({
+      officeDetails = await req.db.office.findUnique({
         where: { id: targetOfficeId },
         select: { id: true, name: true }
       });
@@ -348,7 +347,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     const totalEmployees = employeeIds.length;
 
     // ---- Attendance Today (group by status) ----
-    const attendanceToday = await prisma.attendance.groupBy({
+    const attendanceToday = await req.db.attendance.groupBy({
       by: ["status"],
       where: {
         empId: { in: employeeIds },
@@ -373,7 +372,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     const totalAbsent = counts["ABSENT"] || 0;
 
     // ---- Absent Employees List ----
-    const absentees = await prisma.attendance.findMany({
+    const absentees = await req.db.attendance.findMany({
       where: {
         status: "ABSENT",
         empId: { in: employeeIds },
@@ -395,7 +394,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     }));
 
           // ---- Get all offices ----
-      const offices = await prisma.office.findMany();
+      const offices = await req.db.office.findMany();
 
     // ---- Prepare response based on office selection ----
     const response = {
@@ -412,7 +411,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     // Add pendingLeaves and offices only for specific office (not for "all")
     if (!isAllOffices) {
       // ---- Pending Leaves for specific office ----
-      const pendingLeaves = await prisma.leave.findMany({
+      const pendingLeaves = await req.db.leave.findMany({
         where: { 
           status: "PENDING",
           empId: { in: employeeIds }
@@ -476,7 +475,7 @@ export const getEmployeeAttendanceByMonthInAdmin = async (req, res) => {
     const monthEndUTC = monthEndIST.utc().toDate();
 
     // 3. Fetch attendance records
-    const attendanceRecords = await prisma.attendance.findMany({
+    const attendanceRecords = await req.db.attendance.findMany({
       where: {
         empId: Number(empId),
         date: {
@@ -524,7 +523,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     const todayStartUTCForHoliday = todayStartISTMoment.utc().toDate();
     const todayEndUTCForHoliday = todayEndISTMoment.utc().toDate();
 
-    const holidayToday = await prisma.holiday.findFirst({
+    const holidayToday = await req.db.holiday.findFirst({
       where: {
         date: {
           gte: todayStartUTCForHoliday,
@@ -557,7 +556,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
       targetOfficeId = Number(officeId);
       
       // Verify office exists
-      const officeExists = await prisma.office.findUnique({
+      const officeExists = await req.db.office.findUnique({
         where: { id: targetOfficeId },
         select: { id: true, name: true }
       });
@@ -569,7 +568,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
       console.log("DEBUG - Processing for office:", officeExists.name);
     } else {
       // Get the first office if no officeId provided
-      const firstOffice = await prisma.office.findFirst({
+      const firstOffice = await req.db.office.findFirst({
         orderBy: { id: 'asc' },
         select: { id: true, name: true }
       });
@@ -583,7 +582,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     }
 
     // 2. Get all ACTIVE employees for the target office
-    const officeEmployees = await prisma.employee.findMany({
+    const officeEmployees = await req.db.employee.findMany({
       where: { 
         officeId: targetOfficeId,
         status: 'ACTIVE'
@@ -606,7 +605,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     }
 
     // ====== NEW: Get current attendance stats and validate ======
-    const attendanceStats = await prisma.attendance.groupBy({
+    const attendanceStats = await req.db.attendance.groupBy({
       by: ["status"],
       where: {
         empId: { in: employeeIds },
@@ -666,7 +665,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     console.log("DEBUG - Target date UTC:", targetDateUTC);
 
     // Get office employees who already have attendance records for today
-    const existingAttendance = await prisma.attendance.findMany({
+    const existingAttendance = await req.db.attendance.findMany({
       where: {
         empId: { in: employeeIds },
         date: {
@@ -700,12 +699,12 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     const processedEmployees = [];
     
     // Use a transaction to ensure data consistency
-    const result = await prisma.$transaction(async (prisma) => {
+    const result = await req.db.$transaction(async (prisma) => {
       const batchResults = [];
       
       for (const employee of employeesWithoutAttendance) {
         // Double-check this employee doesn't have a record (race condition protection)
-        const existingRecord = await prisma.attendance.findFirst({
+        const existingRecord = await req.db.attendance.findFirst({
           where: {
             empId: employee.id,
             date: { gte: todayStartUTC, lt: todayEndUTC }
@@ -732,7 +731,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
 
         try {
           // Create attendance record
-          const attendanceRecord = await prisma.attendance.create({
+          const attendanceRecord = await req.db.attendance.create({
             data: {
               empId: employee.id,
               date: todayStartUTC,
@@ -746,7 +745,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
           // Create deduction transaction for ABSENT status
           if (status === "ABSENT") {
             // Get employee's base salary
-            employeeData = await prisma.employee.findUnique({
+            employeeData = await req.db.employee.findUnique({
               where: { id: employee.id },
               select: { baseSalary: true, name: true }
             });
@@ -760,7 +759,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
               const perDayAmount = Math.round(employeeData.baseSalary / totalDaysInMonth);
               
               // Create deduction transaction
-              await prisma.transaction.create({
+              await req.db.transaction.create({
                 data: {
                   empId: employee.id,
                   amount: perDayAmount,
@@ -812,7 +811,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     console.log("DEBUG - Processing summary:", summary);
 
     // Get office details for response
-    const officeDetails = await prisma.office.findUnique({
+    const officeDetails = await req.db.office.findUnique({
       where: { id: targetOfficeId },
       select: { id: true, name: true }
     });
@@ -873,7 +872,7 @@ export const checkBulkAttendanceStatus = async (req, res) => {
       targetOfficeId = Number(officeId);
       
       // Verify office exists
-      const officeExists = await prisma.office.findUnique({
+      const officeExists = await req.db.office.findUnique({
         where: { id: targetOfficeId },
         select: { id: true, name: true }
       });
@@ -883,7 +882,7 @@ export const checkBulkAttendanceStatus = async (req, res) => {
       }
     } else {
       // Get the first office if no officeId provided
-      const firstOffice = await prisma.office.findFirst({
+      const firstOffice = await req.db.office.findFirst({
         orderBy: { id: 'asc' },
         select: { id: true, name: true }
       });
@@ -896,7 +895,7 @@ export const checkBulkAttendanceStatus = async (req, res) => {
     }
 
     // 2. Get all active employees for the target office
-    const officeEmployees = await prisma.employee.findMany({
+    const officeEmployees = await req.db.employee.findMany({
       where: { 
         officeId: targetOfficeId,
         status: 'ACTIVE'
@@ -921,7 +920,7 @@ export const checkBulkAttendanceStatus = async (req, res) => {
     }
 
     // 3. Get attendance stats (excluding HOLIDAY status from total)
-    const attendanceStats = await prisma.attendance.groupBy({
+    const attendanceStats = await req.db.attendance.groupBy({
       by: ["status"],
       where: {
         empId: { in: employeeIds },
@@ -956,7 +955,7 @@ export const checkBulkAttendanceStatus = async (req, res) => {
     const isCompleted = totalRecorded === totalEmployeesInOffice;
 
     // Count bulk records for additional context
-    const existingBulkRecords = await prisma.attendance.count({
+    const existingBulkRecords = await req.db.attendance.count({
       where: {
         empId: { in: employeeIds },
         date: { gte: todayStartUTC, lt: todayEndUTC },
@@ -966,7 +965,7 @@ export const checkBulkAttendanceStatus = async (req, res) => {
     });
 
     // 5. Get office details for response
-    const officeDetails = await prisma.office.findUnique({
+    const officeDetails = await req.db.office.findUnique({
       where: { id: targetOfficeId },
       select: { id: true, name: true }
     });
@@ -1042,7 +1041,7 @@ export const getEmployeesByAttendanceStatus = async (req, res) => {
       isAllOffices = true;
       
       // Get all active employees from all offices
-      const allEmployees = await prisma.employee.findMany({
+      const allEmployees = await req.db.employee.findMany({
         where: { 
           status: 'ACTIVE'
         },
@@ -1056,7 +1055,7 @@ export const getEmployeesByAttendanceStatus = async (req, res) => {
       targetOfficeId = Number(officeId);
       
       // Verify office exists
-      const officeExists = await prisma.office.findUnique({
+      const officeExists = await req.db.office.findUnique({
         where: { id: targetOfficeId },
       });
       
@@ -1065,7 +1064,7 @@ export const getEmployeesByAttendanceStatus = async (req, res) => {
       }
 
       // Get employees for specific office
-      const officeEmployees = await prisma.employee.findMany({
+      const officeEmployees = await req.db.employee.findMany({
         where: { 
           officeId: targetOfficeId,
           status: 'ACTIVE'
@@ -1076,14 +1075,14 @@ export const getEmployeesByAttendanceStatus = async (req, res) => {
       employeeIds = officeEmployees.map(emp => emp.id);
       
       // Get office details for response
-      officeDetails = await prisma.office.findUnique({
+      officeDetails = await req.db.office.findUnique({
         where: { id: targetOfficeId },
         select: { id: true, name: true }
       });
     }
 
     // 3. Get attendance records for today with the specified status
-    const attendanceRecords = await prisma.attendance.findMany({
+    const attendanceRecords = await req.db.attendance.findMany({
       where: {
         status: isAllOffices ? attendanceStatus === "ABSENT" ? {in:["ABSENT"]} :  { in: ["PRESENT", "LATE"] } : attendanceStatus,
         empId: { in: employeeIds },
