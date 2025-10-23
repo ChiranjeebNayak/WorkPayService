@@ -1,9 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { requestContext } from "./utils/requestContext.js";
 
-const prisma = new PrismaClient({
-  log: ["query"],
-});
+const prisma = new PrismaClient();
 
 // Capture each query in the current request context
 prisma.$on("query", (e) => {
