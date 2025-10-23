@@ -66,7 +66,13 @@ export const addTransaction = async (req, res) => {
     });
   } catch (error) {
     console.error("Error settling transaction:", error);
-    res.status(500).json({ error: "Failed to settle transaction" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to settle transaction",
+      query: "addTransaction",
+      params: { empId: req.body?.empId, amount: req.body?.amount, type: req.body?.type, description: req.body?.description },
+      details: error.message,
+    });
   }
 };
 
@@ -123,7 +129,13 @@ export const getEmployeeTransactions = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching employee transactions:", error);
-    res.status(500).json({ error: "Failed to fetch employee transactions" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch employee transactions",
+      query: "getEmployeeTransactions",
+      params: { empId: req.employee?.id, year: req.query?.year },
+      details: error.message,
+    });
   }
 };
 
@@ -213,7 +225,13 @@ export const getMonthlyTransactions = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching monthly transactions:", error);
-    res.status(500).json({ error: "Failed to fetch monthly transactions" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch monthly transactions",
+      query: "getMonthlyTransactions",
+      params: { month: req.query?.month, year: req.query?.year },
+      details: error.message,
+    });
   }
 };
 
@@ -263,6 +281,12 @@ export const getEmployeeTransactionsAdmin = async (req, res) => {
 
   } catch (error) {
     console.error("Error fetching employee transactions:", error);
-    res.status(500).json({ error: "Failed to fetch employee transactions" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch employee transactions",
+      query: "getEmployeeTransactionsAdmin",
+      params: { empId: req.query?.empId, year: req.query?.year },
+      details: error.message,
+    });
   }
 };

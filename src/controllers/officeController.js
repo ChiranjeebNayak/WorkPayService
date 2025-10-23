@@ -1,5 +1,3 @@
-
-
 // Create office (only if it does not exist)
 export const createOffice = async (req, res) => {
   try {
@@ -39,7 +37,13 @@ export const createOffice = async (req, res) => {
     });
   } catch (error) {
     console.error("Error creating office:", error);
-    res.status(500).json({ error: "Failed to create office" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to create office",
+      query: "createOffice",
+      params: { name, latitude, longitude, checkin, checkout, breakTime, range },
+      details: error.message,
+    });
   }
 };
 
@@ -54,7 +58,13 @@ export const getOffices = async (req, res) => {
     res.json({message: "Office settings fetched successfully", offices });
   } catch (error) {
     console.error("Error fetching office:", error);
-    res.status(500).json({ error: "Failed to fetch office" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch office",
+      query: "getOffices",
+      params: {},
+      details: error.message,
+    });
   }
 };
 
@@ -93,7 +103,13 @@ export const updateOffice = async (req, res) => {
     res.json({ message: `Office ${updatedOffice.name} settings updated successfully`, office: updatedOffice });
   } catch (error) {
     console.error("Error updating office:", error);
-    res.status(500).json({ error: "Failed to update office" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to update office",
+      query: "updateOffice",
+      params: { officeId: req.params?.id, ...req.body },
+      details: error.message,
+    });
   }
 };
 
@@ -128,6 +144,12 @@ export const deleteOffice = async (req, res) => {
     res.json({ message: `Office ${office.name} deleted successfully` });
   } catch (error) {
     console.error("Error deleting office:", error);
-    res.status(500).json({ error: "Failed to delete office" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to delete office",
+      query: "deleteOffice",
+      params: { officeId: req.params?.id },
+      details: error.message,
+    });
   }
 };

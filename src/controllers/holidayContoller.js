@@ -61,7 +61,13 @@ export const getHolidaysByYear = async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error("Error fetching holidays:", error);
-    res.status(500).json({ error: "Failed to fetch holidays" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch holidays",
+      query: "getHolidaysByYear",
+      params: { year: new Date().getFullYear() },
+      details: error.message,
+    });
   }
 };
 
@@ -171,7 +177,13 @@ export const addHoliday = async (req, res) => {
     });
   } catch (error) {
     console.error("Error adding holiday:", error);
-    res.status(500).json({ error: "Failed to add holiday", details: error.message });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to add holiday",
+      query: "addHoliday",
+      params: { description: req.body?.description, date: req.body?.date },
+      details: error.message,
+    });
   }
 };
 
@@ -231,6 +243,12 @@ export const deleteHoliday = async (req, res) => {
     });
   } catch (error) {
     console.error("Error deleting holiday:", error);
-    res.status(500).json({ error: "Failed to delete holiday", details: error.message });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to delete holiday",
+      query: "deleteHoliday",
+      params: { holidayId: req.params?.id },
+      details: error.message,
+    });
   }
 };

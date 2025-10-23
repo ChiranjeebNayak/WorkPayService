@@ -166,7 +166,12 @@ export const handleAttendance = async (req, res) => {
     res.status(400).json({ error: "Invalid type. Use 'checkin' or 'checkout'." });
   } catch (error) {
     console.error("Attendance Error:", error);
-    res.status(500).json({ error: "Failed to handle attendance", details: error.message });
+    res.status(200).json({ 
+      error: true,
+      message: "Attendance operation failed",
+      query: "handleAttendance",
+      details: error.message,
+    });
   }
 };
 
@@ -250,7 +255,13 @@ export const getEmployeeAttendanceByMonth = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching employee attendance:", error);
-    res.status(500).json({ error: "Failed to fetch employee attendance" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch employee attendance",
+      query: "getEmployeeAttendanceByMonth",
+      params: { empId: req.employee?.id, month: req.query?.month, year: req.query?.year },
+      details: error.messag
+    });
   }
 };
 
@@ -432,7 +443,13 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error("Error fetching dashboard attendance:", error);
-    res.status(500).json({ error: "Failed to fetch dashboard attendance" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch dashboard attendance",
+      query: "getTodayAttendanceDashboard",
+      params: { officeId: req.params?.officeId },
+      details: error.message,
+    });
   }
 };
  
@@ -497,7 +514,13 @@ export const getEmployeeAttendanceByMonthInAdmin = async (req, res) => {
     res.json({ month, year, attendanceRecords: attendanceRecordsIST });
   } catch (error) {
     console.error("Error fetching employee attendance:", error);
-    res.status(500).json({ error: "Failed to fetch employee attendance" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch employee attendance in admin",
+      query: "getEmployeeAttendanceByMonthInAdmin",
+      params: { empId: req.query?.empId, month: req.query?.month, year: req.query?.year },
+      details: error.message,
+    });
   }
 };
 
@@ -844,9 +867,12 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
 
   } catch (error) {
     console.error("Error marking attendance for absent employees:", error);
-    res.status(500).json({ 
-      error: "Failed to mark attendance for absent employees", 
-      details: error.message 
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to mark attendance for absent employees",
+      query: "markAttendanceForAbsentEmployees",
+      params: { officeId: req.params?.officeId },
+      details: error.message,
     });
   }
 };
@@ -985,9 +1011,12 @@ export const checkBulkAttendanceStatus = async (req, res) => {
 
   } catch (error) {
     console.error("Error checking bulk attendance status:", error);
-    res.status(500).json({ 
-      error: "Failed to check bulk attendance status", 
-      details: error.message 
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to check bulk attendance status",
+      query: "checkBulkAttendanceStatus",
+      params: { officeId: req.params?.officeId },
+      details: error.message,
     });
   }
 };
@@ -1139,6 +1168,12 @@ export const getEmployeesByAttendanceStatus = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching employees by attendance status:", error);
-    res.status(500).json({ error: "Failed to fetch employees by attendance status" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch employees by attendance status",
+      query: "getEmployeesByAttendanceStatus",
+      params: { officeId: req.params?.officeId, status: req.params?.status },
+      details: error.message,
+    });
   }
 };

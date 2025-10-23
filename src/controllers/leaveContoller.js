@@ -197,8 +197,16 @@ export const applyLeave = async (req, res) => {
     });
   } catch (error) {
     console.error("Error applying leave:", error);
-    res.status(500).json({
-      error: "Failed to apply leave",
+    res.status(200).json({
+      error: true,
+      message: "Failed to apply leave",
+      query: "applyLeave",
+      params: { 
+        empId: req.employee?.id, 
+        reason: req.body?.reason, 
+        startDate: req.body?.startDate, 
+        endDate: req.body?.endDate 
+      },
       details: error.message,
     });
   }
@@ -319,7 +327,13 @@ export const getLeaveSummary = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching leave summary:", error);
-    res.status(500).json({ error: "Failed to fetch leave summary" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch leave summary",
+      query: "getLeaveSummary",
+      params: { officeId: req.params?.officeId },
+      details: error.message,
+    });
   }
 };
 
@@ -440,7 +454,13 @@ export const updateLeaveStatus = async (req, res) => {
 
   } catch (error) {
     console.error("Error updating leave status:", error);
-    res.status(500).json({ error: "Failed to update leave status", details: error.message });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to update leave status",
+      query: "updateLeaveStatus",
+      params: { leaveId: req.body?.leaveId, status: req.body?.status },
+      details: error.message,
+    });
   }
 };
 
@@ -485,7 +505,13 @@ export const getLeavesByYear = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching leaves:", error);
-    res.status(500).json({ error: "Failed to fetch leaves" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch leaves",
+      query: "getLeavesByYear",
+      params: { empId: req.employee?.id, year: req.query?.year },
+      details: error.message,
+    });
   }
 };
 
@@ -529,6 +555,12 @@ export const getEmployeeLeaveHistory = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching leave history:", error);
-    res.status(500).json({ error: "Failed to fetch leave history" });
+    res.status(200).json({ 
+      error: true,
+      message: "Failed to fetch leave history",
+      query: "getEmployeeLeaveHistory",
+      params: { empId: req.query?.empId, year: req.query?.year },
+      details: error.message,
+    });
   }
 };
