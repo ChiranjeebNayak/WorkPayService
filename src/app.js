@@ -34,7 +34,7 @@ app.use(httpLogger);
 
 app.get("/", (req, res) => {
   const responsePayload = {
-    version: "1.0.0",
+    version: "1.0.1",
     message: "Welcome to the WorkPay API"
   }
   res.send(responsePayload);
