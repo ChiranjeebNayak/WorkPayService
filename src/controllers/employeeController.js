@@ -197,6 +197,7 @@ export const getEmployeeById = async (req, res) => {
     const { id } = req.params;
     const employee = await req.db.employee.findUnique({
       where: { id: Number(id) },
+      include:{ office:true }
     });
 
     if (!employee) return res.status(404).json({ error: "Employee not found" });
@@ -211,7 +212,9 @@ export const getEmployeeById = async (req, res) => {
       leaveBalance:employee.leaveBalance,
       joinedDate:employee.joinedDate,
       accountNumber:employee.accountNumber,
-      ifscCode:employee.ifscCode
+      ifscCode:employee.ifscCode,
+      officeName:employee.office.name,
+      location:`${employee.office.latitude},${employee.office.longitude}`
     } });
   } catch (error) {
     console.error("Error fetching employee:", error);
@@ -258,6 +261,13 @@ export const updateEmployee = async (req, res) => {
       ifscCode,
     };
 
+    if(phone){
+      const existingPhone = await req.db.employee.findUnique({ where: { phone } });
+      if (existingPhone && existingPhone.id !== Number(id)) {
+        return res.status(200).json({ error: "Employee with this phone number already exists" });
+      }
+    }
+
     if (password) {
       updateData.password = await bcrypt.hash(password, 10);
     }
@@ -297,8 +307,8 @@ export const updateEmployee = async (req, res) => {
       });
     }
 
-    //  Real internal error → keep as 200 with details
-    res.status(200).json({
+    //  Real internal error → keep as 500 with details
+    res.status(500).json({
       error: "Error updating employee",
       details: error.message,
       prismaCode: error.code,
@@ -638,7 +648,9 @@ export const getEmployeeDashboard = async (req, res) => {
         checkoutTime: attendance ? formatTimeOnlyIST(attendance.checkOutTime) : null,
         overtime: attendance ? attendance.overTime : null,
         accountNumber:employee.accountNumber,
-        ifscCode:employee.ifscCode
+        ifscCode:employee.ifscCode,
+        officeName:employee.office.name,
+        location:`${employee.office.latitude},${employee.office.longitude}`
       },
       officeDetails: {
         latitude: employee.office.latitude,
