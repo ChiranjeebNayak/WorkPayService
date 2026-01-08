@@ -6,9 +6,21 @@ const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 // ✅ Admin Login
 export const loginAdmin = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, phone } = req.body;
 
-    const admin = await req.db.admin.findUnique({ where: { email } });
+    // Support login with either email or phone
+    const loginIdentifier = email || phone;
+    
+    if (!loginIdentifier || !password) {
+      console.log("Missing fields:", { email: !!email, phone: !!phone, password: !!password });
+      return res.status(400).json({ error: "Email/phone and password are required" });
+    }
+
+    // Find admin by email or phone
+    const admin = await req.db.admin.findUnique({ 
+      where: email ? { email } : { phone } 
+    });
+    
     if (!admin) return res.status(404).json({ error: "Admin not found" });
 
     const isPasswordValid = await bcrypt.compare(password, admin.password);
@@ -16,8 +28,18 @@ export const loginAdmin = async (req, res) => {
 
     const token = jwt.sign({ id: admin.id, email: admin.email, role: "admin" }, JWT_SECRET, { expiresIn: "1d" });
 
-    res.json({ message: "Login successful", token });
+    res.json({ 
+      message: "Login successful", 
+      token,
+      user: {
+        id: admin.id,
+        name: admin.name,
+        email: admin.email,
+        phone: admin.phone
+      }
+    });
   } catch (error) {
+    console.error("Login error:", error);
     res.status(500).json({ error: "Failed to login admin", details: error.message });
   }
 };

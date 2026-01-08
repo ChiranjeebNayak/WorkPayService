@@ -4,6 +4,9 @@ import moment from "moment-timezone";
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
+// Get current UTC time
+const getCurrentUTC = () => new Date();
+
 // ✅ Employee Login
 export const loginEmployee = async (req, res) => {
   try {
@@ -34,6 +37,11 @@ export const loginEmployee = async (req, res) => {
 // ✅ Create Employee
 export const createEmployee = async (req, res) => {
   try {
+    // Validate admin authentication
+    if (!req.admin || !req.admin.id) {
+      return res.status(401).json({ error: "Admin authentication required" });
+    }
+    
     const adminId = req.admin.id; // from adminAuth middleware
     const { name, phone, email, password, baseSalary, overtimeRate, officeId, joinedDate,accountNumber,ifscCode } = req.body;
 
@@ -59,9 +67,6 @@ export const createEmployee = async (req, res) => {
     const todayIST = moment.utc(nowUTC).tz("Asia/Kolkata").startOf('day');
     const todayUTC = todayIST.utc().toDate();
 
-    console.log("DEBUG - Employee creation date IST:", todayIST.format("YYYY-MM-DD"));
-    console.log("DEBUG - Employee creation date UTC:", todayUTC);
-
     // Get all holidays that are on or after TODAY (employee creation date)
     const upcomingHolidays = await req.db.holiday.findMany({
       where: {
@@ -73,8 +78,6 @@ export const createEmployee = async (req, res) => {
         date: 'asc'
       }
     });
-
-    console.log(`DEBUG - Found ${upcomingHolidays.length} holidays on or after today`);
 
     // Use transaction to create employee and holiday attendance records atomically
     const result = await req.db.$transaction(async (tx) => {
@@ -95,8 +98,6 @@ export const createEmployee = async (req, res) => {
         },
       });
 
-      console.log(`DEBUG - Created employee: ${employee.name} (ID: ${employee.id})`);
-
       // Create attendance records for all upcoming holidays
       let holidayAttendanceCount = 0;
       if (upcomingHolidays.length > 0) {
@@ -113,15 +114,14 @@ export const createEmployee = async (req, res) => {
         });
 
         holidayAttendanceCount = holidayAttendanceRecords.count;
-        console.log(`DEBUG - Created ${holidayAttendanceCount} holiday attendance records for employee`);
       }
 
       return { employee, holidayAttendanceCount };
     });
 
     // Prepare holiday details for response
-    const holidayDates = upcomingHolidays.map(h => 
-      moment.utc(h.date).tz("Asia/Kolkata").format("YYYY-MM-DD")
+    const holidayDates = upcomingHolidays.map((holiday) => 
+      moment.utc(holiday.date).tz("Asia/Kolkata").format("YYYY-MM-DD")
     );
 
     res.status(201).json({

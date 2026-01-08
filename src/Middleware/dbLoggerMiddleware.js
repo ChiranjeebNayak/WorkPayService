@@ -10,11 +10,19 @@ export const attachDbLogger = (req, res, next) => {
       if (typeof origModel === "object") {
         return new Proxy(origModel, {
           get(t, method) {
-            if (typeof t[method] === "function") {
-              return (...args) =>
-                logDbQuery(`prisma.${model}.${method}`, args, () => t[method](...args));
+            // Handle Symbol properties directly without logging
+            if (typeof method === "symbol") {
+              return origModel[method];
             }
-            return t[method];
+            
+            if (typeof origModel[method] === "function") {
+              return (...args) => {
+                // Only log if method is a string (not a Symbol)
+                const methodName = typeof method === "string" ? method : String(method);
+                return logDbQuery(`prisma.${model}.${methodName}`, args, () => origModel[method](...args));
+              };
+            }
+            return origModel[method];
           },
         });
       }
