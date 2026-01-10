@@ -18,7 +18,7 @@ const getISTRangeUTC = (date = new Date()) => {
 const getTodayOfficeTimeUTC = (storedOfficeTime) => {
   // Extract IST hours and minutes from stored UTC time
   const officeTimeIST = moment.utc(storedOfficeTime).tz("Asia/Kolkata");
-  
+
   // Create today's date with those hours/minutes in IST, then convert to UTC
   return moment.tz("Asia/Kolkata")
     .startOf("day")
@@ -39,7 +39,7 @@ const hasApprovedLeaveForDate = async (db, empId, targetDateUTC) => {
       toDate: { gte: targetDateUTC }
     }
   });
-  
+
   return leave !== null;
 };
 
@@ -56,7 +56,7 @@ export const handleAttendance = async (req, res) => {
 
     const employee = await req.db.employee.findUnique({
       where: { id: Number(employeeId) },
-      select: { id: true, name: true, status: true , officeId: true },
+      select: { id: true, name: true, status: true, officeId: true },
     });
 
     // Fetch office timings
@@ -66,17 +66,8 @@ export const handleAttendance = async (req, res) => {
     if (!office) return res.status(404).json({ error: "Office details not found" });
 
     // Convert stored office times to today's UTC times
-    console.log("DEBUG - Stored office.checkin:", office.checkin);
-    console.log("DEBUG - Stored office.checkout:", office.checkout);
-    
     const officeCheckinUTC = getTodayOfficeTimeUTC(office.checkin);
     const officeCheckoutUTC = getTodayOfficeTimeUTC(office.checkout);
-
-    // Debug logs to verify office times
-    console.log("DEBUG - Office checkin UTC:", officeCheckinUTC);
-    console.log("DEBUG - Office checkout UTC:", officeCheckoutUTC);
-    console.log("DEBUG - Office checkin IST:", toISTString(officeCheckinUTC));
-    console.log("DEBUG - Office checkout IST:", toISTString(officeCheckoutUTC));
 
     // Fetch today's attendance sessions
     const todayAttendances = await req.db.attendance.findMany({
@@ -93,28 +84,18 @@ export const handleAttendance = async (req, res) => {
     const completedSessions = todayAttendances.filter(att => att.checkOutTime);
 
     if (type === "checkin") {
-      // Allow check-in if:
-      // 1. No sessions today (first check-in)
-      // 2. One completed session (second check-in after lunch)
-      // 3. Max 2 sessions per day
-      if (activeSession) {
-        return res.status(400).json({ message: "Already checked in. Please check out first." });
-      }
-      
-      if (todayAttendances.length >= 2) {
-        return res.status(400).json({ message: "Maximum 2 check-ins allowed per day." });
+      // Allow only one check-in per day
+      if (todayAttendances.length >= 1) {
+        return res.status(400).json({ message: "Already checked in today. Only one check-in allowed per day." });
       }
 
-      // Determine session type and status
-      const sessionType = todayAttendances.length === 0 ? "WORK" : "WORK"; // Both are work sessions
-      const isSecondCheckin = todayAttendances.length === 1;
-      
-      // Calculate late threshold (30 minutes after office checkin for first session)
+      // Determine status
+      const sessionType = "WORK";
+
+      // Calculate late threshold (30 minutes after office checkin)
       let status = "PRESENT";
-      if (!isSecondCheckin) {
-        const lateThresholdUTC = new Date(officeCheckinUTC.getTime() + 30 * 60 * 1000);
-        status = nowUTC <= lateThresholdUTC ? "PRESENT" : "LATE";
-      }
+      const lateThresholdUTC = new Date(officeCheckinUTC.getTime() + 30 * 60 * 1000);
+      status = nowUTC <= lateThresholdUTC ? "PRESENT" : "LATE";
 
       const attendance = await req.db.attendance.create({
         data: {
@@ -128,15 +109,13 @@ export const handleAttendance = async (req, res) => {
         },
       });
 
-      const sessionNumber = todayAttendances.length + 1;
       return res.status(200).json({
-        message: `Check-in ${sessionNumber === 1 ? status : 'completed'} at ${toISTString(nowUTC)}`,
+        message: `Check-in ${status} at ${toISTString(nowUTC)}`,
         attendance: {
           ...attendance,
           date: toISTString(attendance.date),
           checkInTime: toISTString(attendance.checkInTime),
         },
-        sessionNumber,
       });
     }
 
@@ -151,29 +130,19 @@ export const handleAttendance = async (req, res) => {
 
       // Calculate worked minutes for this session
       const sessionWorkMinutes = Math.floor((nowUTC - activeSession.checkInTime) / (1000 * 60));
-      
+
       // Update this session
       const updatedSession = await req.db.attendance.update({
         where: { id: activeSession.id },
         data: { checkOutTime: nowUTC, workTime: sessionWorkMinutes },
       });
 
-      // Calculate total work time for the day (all completed sessions)
-      const allSessionsToday = await req.db.attendance.findMany({
-        where: {
-          empId: Number(employeeId),
-          date: { gte: todayStartUTC, lt: todayEndUTC },
-          checkOutTime: { not: null }
-        },
-      });
-      
-      const totalWorkMinutes = allSessionsToday.reduce((sum, session) => sum + session.workTime, 0);
+      // Calculate overtime
       const standardWorkMinutes = 8 * 60; // 8 hours in minutes
-      const overtimeMinutes = totalWorkMinutes > standardWorkMinutes ? totalWorkMinutes - standardWorkMinutes : 0;
-      
-      // Create overtime transaction if applicable (only after final checkout)
-      const sessionNumber = allSessionsToday.length;
-      if (overtimeMinutes > 0 && sessionNumber === 2) {
+      const overtimeMinutes = sessionWorkMinutes > standardWorkMinutes ? sessionWorkMinutes - standardWorkMinutes : 0;
+
+      // Create overtime transaction if applicable
+      if (overtimeMinutes > 0) {
         const overtimeHours = overtimeMinutes / 60;
         const overtimePay = overtimeHours * employee.overtimeRate;
 
@@ -196,10 +165,8 @@ export const handleAttendance = async (req, res) => {
           checkInTime: toISTString(updatedSession.checkInTime),
           checkOutTime: toISTString(updatedSession.checkOutTime),
         },
-        sessionWorkMinutes,
-        totalWorkMinutes,
+        workTime: sessionWorkMinutes,
         overtimeMinutes,
-        sessionNumber,
       });
     }
 
@@ -223,7 +190,7 @@ export const getEmployeeAttendanceByMonth = async (req, res) => {
 
     // Format month and year properly with padding
     const paddedMonth = month.toString().padStart(2, '0');
-    
+
     // Create date string in ISO format
     const dateString = `${year}-${paddedMonth}-01T00:00:00+05:30`;
 
@@ -243,19 +210,11 @@ export const getEmployeeAttendanceByMonth = async (req, res) => {
     if (isCurrentMonth) {
       const todayEndIST = currentDateIST.clone().endOf("day");
       monthEndIST = todayEndIST; // Use today's end instead of month end
-      console.log("DEBUG - Current month detected, limiting to today");
-      console.log("DEBUG - Month end changed from full month to:", monthEndIST.format("YYYY-MM-DD HH:mm:ss"));
     }
 
     // 2. Convert to UTC for querying
     const monthStartUTC = monthStartIST.utc().toDate();
     const monthEndUTC = monthEndIST.utc().toDate();
-
-    console.log("DEBUG - Query range:");
-    console.log("DEBUG - Start IST:", monthStartIST.format("YYYY-MM-DD HH:mm:ss"));
-    console.log("DEBUG - End IST:", monthEndIST.format("YYYY-MM-DD HH:mm:ss"));
-    console.log("DEBUG - Start UTC:", monthStartUTC);
-    console.log("DEBUG - End UTC:", monthEndUTC);
 
     // 3. Fetch attendance records
     const attendanceRecords = await req.db.attendance.findMany({
@@ -277,16 +236,16 @@ export const getEmployeeAttendanceByMonth = async (req, res) => {
       checkOutTime: record.checkOutTime ? toISTString(record.checkOutTime) : null
     }));
 
-    const responseMessage = isCurrentMonth 
+    const responseMessage = isCurrentMonth
       ? `Attendance for current month (${year}-${paddedMonth}) from start of month to today`
       : `Attendance for ${year}-${paddedMonth}`;
 
-    res.json({ 
-      month, 
-      year, 
+    res.json({
+      month,
+      year,
       isCurrentMonth,
       message: responseMessage,
-      attendanceRecords: attendanceRecordsIST 
+      attendanceRecords: attendanceRecordsIST
     });
   } catch (error) {
     console.error("Error fetching employee attendance:", error);
@@ -303,43 +262,35 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     let targetOfficeId;
     let isAllOffices = false;
     const { officeId } = req.params;
-    
+
     // 1. Get current IST date and create UTC range for today IST
     const currentIST = moment.tz("Asia/Kolkata");
     const todayISTDateString = currentIST.format("YYYY-MM-DD");
-    
+
     // Create today's IST day boundaries and convert to UTC for DB query
     const todayStartIST = moment.tz(todayISTDateString + " 00:00:00", "Asia/Kolkata");
     const todayEndIST = moment.tz(todayISTDateString + " 23:59:59", "Asia/Kolkata");
-    
+
     const todayStartUTC = todayStartIST.utc().toDate();
     const todayEndUTC = todayEndIST.utc().toDate();
-    
-    console.log("Current IST:", currentIST.format("YYYY-MM-DD HH:mm:ss"));
-    console.log("Today IST date:", todayISTDateString);
-    console.log("IST Start:", todayStartIST.tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"));
-    console.log("IST End:", todayEndIST.tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"));
-    console.log("UTC Start:", todayStartUTC);
-    console.log("UTC End:", todayEndUTC);
-    console.log("Received officeId param:", officeId);
 
     // 2. Determine target office or all offices
     if (officeId === undefined) {
       return res.status(400).json({ error: "officeId parameter is required" });
     }
-    
+
     if (officeId === "all") {
       // Handle "all" offices case
       isAllOffices = true;
     } else {
       // Use the provided officeId
       targetOfficeId = Number(officeId);
-      
+
       // Verify office exists
       const officeExists = await req.db.office.findUnique({
         where: { id: targetOfficeId },
       });
-      
+
       if (!officeExists) {
         return res.status(404).json({ error: "Office not found" });
       }
@@ -352,32 +303,32 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     if (isAllOffices) {
       // Get all active employees from all offices
       const allEmployees = await req.db.employee.findMany({
-        where: { 
+        where: {
           status: 'ACTIVE'
         },
         select: { id: true }
       });
-      
+
       employeeIds = allEmployees.map(emp => emp.id);
       officeDetails = { id: "all", name: "All Offices" };
     } else {
       // Get employees for specific office
       const officeEmployees = await req.db.employee.findMany({
-        where: { 
+        where: {
           officeId: targetOfficeId,
           status: 'ACTIVE'
         },
         select: { id: true }
       });
-      
+
       employeeIds = officeEmployees.map(emp => emp.id);
-      
+
       // Get office details for response
       officeDetails = await req.db.office.findUnique({
         where: { id: targetOfficeId },
         select: { id: true, name: true }
       });
-      
+
       if (!officeDetails) {
         return res.status(404).json({ error: "Office not found" });
       }
@@ -417,7 +368,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     let totalLate = 0;
     let totalPresent = 0;
     let totalAbsent = 0;
-    
+
     uniqueEmployeeStatus.forEach(status => {
       if (status === "LATE") totalLate++;
       else if (status === "PRESENT") totalPresent++;
@@ -446,8 +397,8 @@ export const getTodayAttendanceDashboard = async (req, res) => {
       name: a.employee.name,
     }));
 
-          // ---- Get all offices ----
-      const offices = await req.db.office.findMany();
+    // ---- Get all offices ----
+    const offices = await req.db.office.findMany();
 
     // ---- Prepare response based on office selection ----
     const response = {
@@ -465,7 +416,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     if (!isAllOffices) {
       // ---- Pending Leaves for specific office ----
       const pendingLeaves = await req.db.leave.findMany({
-        where: { 
+        where: {
           status: "PENDING",
           empId: { in: employeeIds }
         },
@@ -488,7 +439,7 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch dashboard attendance" });
   }
 };
- 
+
 
 // ✅ Admin: Get all attendance for an employee by month & year (IST-aware)
 export const getEmployeeAttendanceByMonthInAdmin = async (req, res) => {
@@ -501,7 +452,7 @@ export const getEmployeeAttendanceByMonthInAdmin = async (req, res) => {
 
     // Format month and year properly with padding
     const paddedMonth = month.toString().padStart(2, '0');
-    
+
     // Create date string in ISO format
     const dateString = `${year}-${paddedMonth}-01T00:00:00+05:30`;
 
@@ -563,16 +514,14 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     const nowUTC = getCurrentUTC();
     const { startUTC: todayStartUTC, endUTC: todayEndUTC } = getISTRangeUTC(nowUTC);
     const targetDateUTC = todayStartUTC; // Use today's start as target date
-    
+
     // Get today's IST date for display
     const todayIST = moment.utc(nowUTC).tz("Asia/Kolkata").format("YYYY-MM-DD");
-    
-    console.log("DEBUG - Processing attendance for today's IST date:", todayIST);
 
     // ====== NEW: Check if today is a holiday ======
     const todayStartISTMoment = moment.tz(todayIST + " 00:00:00", "Asia/Kolkata");
     const todayEndISTMoment = moment.tz(todayIST + " 23:59:59", "Asia/Kolkata");
-    
+
     const todayStartUTCForHoliday = todayStartISTMoment.utc().toDate();
     const todayEndUTCForHoliday = todayEndISTMoment.utc().toDate();
 
@@ -601,42 +550,37 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     // 1. Determine target office (similar to dashboard controller)
     let targetOfficeId;
     const { officeId } = req.params;
-    
-    console.log("DEBUG - Received officeId param:", officeId);
-    
+
     if (officeId !== undefined) {
       // Use the provided officeId
       targetOfficeId = Number(officeId);
-      
+
       // Verify office exists
       const officeExists = await req.db.office.findUnique({
         where: { id: targetOfficeId },
         select: { id: true, name: true }
       });
-      
+
       if (!officeExists) {
         return res.status(404).json({ error: "Office not found" });
       }
-      
-      console.log("DEBUG - Processing for office:", officeExists.name);
     } else {
       // Get the first office if no officeId provided
       const firstOffice = await req.db.office.findFirst({
         orderBy: { id: 'asc' },
         select: { id: true, name: true }
       });
-      
+
       if (!firstOffice) {
         return res.status(404).json({ error: "No offices found" });
       }
-      
+
       targetOfficeId = firstOffice.id;
-      console.log("DEBUG - Processing for default office:", firstOffice.name);
     }
 
     // 2. Get all ACTIVE employees for the target office
     const officeEmployees = await req.db.employee.findMany({
-      where: { 
+      where: {
         officeId: targetOfficeId,
         status: 'ACTIVE'
       },
@@ -645,8 +589,6 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
 
     const employeeIds = officeEmployees.map(emp => emp.id);
     const totalActiveEmployees = officeEmployees.length;
-    
-    console.log("DEBUG - Total ACTIVE employees in office:", totalActiveEmployees);
 
     if (totalActiveEmployees === 0) {
       return res.json({
@@ -687,10 +629,6 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
 
     const totalRecorded = stats.PRESENT + stats.ABSENT + stats.LATE + stats.LEAVE;
 
-    console.log("DEBUG - Current attendance stats:", stats);
-    console.log("DEBUG - Total recorded:", totalRecorded);
-    console.log("DEBUG - Total active employees:", totalActiveEmployees);
-
     // Check if attendance is already complete
     if (totalRecorded === totalActiveEmployees) {
       return res.status(400).json({
@@ -709,13 +647,8 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
 
     // Check if there are employees missing attendance
     const missingCount = totalActiveEmployees - totalRecorded;
-    console.log("DEBUG - Missing attendance records:", missingCount);
     // ====== END VALIDATION ======
-    
-    console.log("DEBUG - Date range UTC:");
-    console.log("DEBUG - Start UTC:", todayStartUTC);
-    console.log("DEBUG - End UTC:", todayEndUTC);
-    console.log("DEBUG - Target date UTC:", targetDateUTC);
+
 
     // Get office employees who already have attendance records for today
     const existingAttendance = await req.db.attendance.findMany({
@@ -730,14 +663,11 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     });
 
     const employeesWithAttendance = new Set(existingAttendance.map(att => att.empId));
-    console.log("DEBUG - Office employees with existing attendance:", employeesWithAttendance.size);
 
     // Find office employees without attendance records
-    const employeesWithoutAttendance = officeEmployees.filter(emp => 
+    const employeesWithoutAttendance = officeEmployees.filter(emp =>
       !employeesWithAttendance.has(emp.id)
     );
-
-    console.log("DEBUG - Office employees without attendance:", employeesWithoutAttendance.length);
 
     if (employeesWithoutAttendance.length === 0) {
       return res.json({
@@ -750,11 +680,11 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
 
     // Process each employee without attendance using transaction for safety
     const processedEmployees = [];
-    
+
     // Use a transaction to ensure data consistency
     const result = await req.db.$transaction(async (prisma) => {
       const batchResults = [];
-      
+
       for (const employee of employeesWithoutAttendance) {
         // Double-check this employee doesn't have a record (race condition protection)
         const existingRecord = await req.db.attendance.findFirst({
@@ -765,7 +695,6 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
         });
 
         if (existingRecord) {
-          console.log(`DEBUG - Skipping ${employee.name}, record already exists`);
           continue;
         }
 
@@ -774,7 +703,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
 
         // Check if employee has approved leave for this date
         const hasLeave = await hasApprovedLeaveForDate(employee.id, targetDateUTC);
-        
+
         if (hasLeave) {
           status = "LEAVE";
           reason = "Approved leave";
@@ -807,10 +736,10 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
               // Calculate total days in current month
               const currentMonth = moment.utc(todayStartUTC).tz("Asia/Kolkata");
               const totalDaysInMonth = currentMonth.daysInMonth();
-              
+
               // Calculate per-day deduction amount
               const perDayAmount = Math.round(employeeData.baseSalary / totalDaysInMonth);
-              
+
               // Create deduction transaction
               await req.db.transaction.create({
                 data: {
@@ -822,7 +751,6 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
                 }
               });
 
-              console.log(`DEBUG - Created deduction for ${employee.name}: ₹${perDayAmount} for absent on ${currentMonth.format("YYYY-MM-DD")}`);
             }
           }
 
@@ -835,17 +763,15 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
             deductionAmount: status === "ABSENT" && employeeData ? Math.round(employeeData.baseSalary / moment.utc(todayStartUTC).tz("Asia/Kolkata").daysInMonth()) : 0
           });
 
-          console.log(`DEBUG - Processed ${employee.name} (ID: ${employee.id}): ${status}`);
         } catch (createError) {
           // Handle potential unique constraint violations gracefully
           if (createError.code === 'P2002') {
-            console.log(`DEBUG - Duplicate prevented for ${employee.name}`);
             continue;
           }
           throw createError;
         }
       }
-      
+
       return batchResults;
     });
 
@@ -860,8 +786,6 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
       }
       return acc;
     }, {});
-
-    console.log("DEBUG - Processing summary:", summary);
 
     // Get office details for response
     const officeDetails = await req.db.office.findUnique({
@@ -897,9 +821,9 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
 
   } catch (error) {
     console.error("Error marking attendance for absent employees:", error);
-    res.status(500).json({ 
-      error: "Failed to mark attendance for absent employees", 
-      details: error.message 
+    res.status(500).json({
+      error: "Failed to mark attendance for absent employees",
+      details: error.message
     });
   }
 };
@@ -917,19 +841,17 @@ export const checkBulkAttendanceStatus = async (req, res) => {
     // 1. Determine target office (same logic as other controllers)
     let targetOfficeId;
     const { officeId } = req.params;
-    
-    console.log("DEBUG - Checking bulk status for officeId:", officeId);
-    
+
     if (officeId !== undefined) {
       // Use the provided officeId
       targetOfficeId = Number(officeId);
-      
+
       // Verify office exists
       const officeExists = await req.db.office.findUnique({
         where: { id: targetOfficeId },
         select: { id: true, name: true }
       });
-      
+
       if (!officeExists) {
         return res.status(404).json({ error: "Office not found" });
       }
@@ -939,17 +861,17 @@ export const checkBulkAttendanceStatus = async (req, res) => {
         orderBy: { id: 'asc' },
         select: { id: true, name: true }
       });
-      
+
       if (!firstOffice) {
         return res.status(404).json({ error: "No offices found" });
       }
-      
+
       targetOfficeId = firstOffice.id;
     }
 
     // 2. Get all active employees for the target office
     const officeEmployees = await req.db.employee.findMany({
-      where: { 
+      where: {
         officeId: targetOfficeId,
         status: 'ACTIVE'
       },
@@ -1031,16 +953,16 @@ export const checkBulkAttendanceStatus = async (req, res) => {
       totalEmployees: totalEmployeesInOffice,
       totalAttendanceToday: totalAttendanceToday,
       remainingEmployees: remainingEmployees,
-      message: isCompleted 
+      message: isCompleted
         ? `Bulk marking already completed for ${officeDetails.name}`
         : `${remainingEmployees} employees in ${officeDetails.name} pending attendance`
     });
 
   } catch (error) {
     console.error("Error checking bulk attendance status:", error);
-    res.status(500).json({ 
-      error: "Failed to check bulk attendance status", 
-      details: error.message 
+    res.status(500).json({
+      error: "Failed to check bulk attendance status",
+      details: error.message
     });
   }
 };
@@ -1052,13 +974,11 @@ export const getEmployeesByAttendanceStatus = async (req, res) => {
   try {
     const { officeId, status } = req.params;
 
-    console.log(officeId,status)
-
     // Validate status parameter
     const validStatuses = ["PRESENT", "ABSENT", "LATE"];
     if (!status || !validStatuses.includes(status.toUpperCase())) {
-      return res.status(400).json({ 
-        error: "Invalid status. Must be one of: PRESENT, ABSENT, LATE" 
+      return res.status(400).json({
+        error: "Invalid status. Must be one of: PRESENT, ABSENT, LATE"
       });
     }
 
@@ -1072,17 +992,13 @@ export const getEmployeesByAttendanceStatus = async (req, res) => {
     // 1. Get current IST date and create UTC range for today IST
     const currentIST = moment.tz("Asia/Kolkata");
     const todayISTDateString = currentIST.format("YYYY-MM-DD");
-    
+
     // Create today's IST day boundaries and convert to UTC for DB query
     const todayStartIST = moment.tz(todayISTDateString + " 00:00:00", "Asia/Kolkata");
     const todayEndIST = moment.tz(todayISTDateString + " 23:59:59", "Asia/Kolkata");
-    
+
     const todayStartUTC = todayStartIST.utc().toDate();
     const todayEndUTC = todayEndIST.utc().toDate();
-    
-    console.log("Current IST:", currentIST.format("YYYY-MM-DD HH:mm:ss"));
-    console.log("Fetching employees with status:", attendanceStatus);
-    console.log("Received officeId param:", officeId);
 
     // 2. Determine target office or all offices
     let isAllOffices = false;
@@ -1092,41 +1008,41 @@ export const getEmployeesByAttendanceStatus = async (req, res) => {
 
     if (officeId === "all") {
       isAllOffices = true;
-      
+
       // Get all active employees from all offices
       const allEmployees = await req.db.employee.findMany({
-        where: { 
+        where: {
           status: 'ACTIVE'
         },
         select: { id: true }
       });
-      
+
       employeeIds = allEmployees.map(emp => emp.id);
       officeDetails = { id: "all", name: "All Offices" };
     } else {
       // Use the provided officeId
       targetOfficeId = Number(officeId);
-      
+
       // Verify office exists
       const officeExists = await req.db.office.findUnique({
         where: { id: targetOfficeId },
       });
-      
+
       if (!officeExists) {
         return res.status(404).json({ error: "Office not found" });
       }
 
       // Get employees for specific office
       const officeEmployees = await req.db.employee.findMany({
-        where: { 
+        where: {
           officeId: targetOfficeId,
           status: 'ACTIVE'
         },
         select: { id: true }
       });
-      
+
       employeeIds = officeEmployees.map(emp => emp.id);
-      
+
       // Get office details for response
       officeDetails = await req.db.office.findUnique({
         where: { id: targetOfficeId },
@@ -1137,7 +1053,7 @@ export const getEmployeesByAttendanceStatus = async (req, res) => {
     // 3. Get attendance records for today with the specified status
     const attendanceRecords = await req.db.attendance.findMany({
       where: {
-        status: isAllOffices ? attendanceStatus === "ABSENT" ? {in:["ABSENT"]} :  { in: ["PRESENT", "LATE"] } : attendanceStatus,
+        status: isAllOffices ? attendanceStatus === "ABSENT" ? { in: ["ABSENT"] } : { in: ["PRESENT", "LATE"] } : attendanceStatus,
         empId: { in: employeeIds },
         date: {
           gte: todayStartUTC,
