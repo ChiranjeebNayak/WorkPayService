@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `attendance` ADD COLUMN `status` ENUM('PRESENT', 'ABSENT', 'LATE', 'LEAVE', 'HOLIDAY') NOT NULL DEFAULT 'PRESENT';

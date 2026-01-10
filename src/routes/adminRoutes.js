@@ -215,15 +215,18 @@ router.delete("/:id", deleteAdmin);   // Delete
  *                 type: string
  *                 format: email
  *                 description: Admin email (use either email or phone)
- *                 example: "john@example.com"
+ *                 example: "admin@demo.com"
  *               phone:
  *                 type: string
  *                 description: Admin phone number (use either email or phone)
- *                 example: "1234567890"
+ *                 example: "9999999999"
  *               password:
  *                 type: string
  *                 description: Admin password
- *                 example: "password123"
+ *                 example: "Admin@123"
+ *           example:
+ *             phone: "9999999999"
+ *             password: "Admin@123"
  *     responses:
  *       200:
  *         description: Login successful

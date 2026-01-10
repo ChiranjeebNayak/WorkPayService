@@ -75,29 +75,53 @@ async function main() {
   const julyStart = moment("2025-07-01");
   const julyEnd = moment("2025-07-31");
 
+  // Create work sessions for each day in July
   for (let d = julyStart.clone(); d.isSameOrBefore(julyEnd); d.add(1, "day")) {
-
     const checkIn = d.clone().hour(9).minute(5).toDate();
     const checkOut = d.clone().hour(17).minute(50).toDate();
-    const overtimeHours = Math.random() < 0.3 ? Math.floor(Math.random() * 3) : 0; // 0–2 hrs
-    const overtimeMinutes = overtimeHours * 60;
-
+    const workDuration = Math.floor((checkOut - checkIn) / (1000 * 60));
+    
+    // Create work session
     await prisma.attendance.create({
       data: {
         empId: employee.id,
-        date: d.toDate(),
+        date: d.clone().startOf("day").toDate(),
         checkInTime: checkIn,
         checkOutTime: checkOut,
-        overTime: overtimeMinutes,
-        status: "PRESENT",
+        workTime: workDuration,
+        sessionType: "WORK",
       },
     });
 
-    if (overtimeMinutes > 0) {
+    // Add break session for some days (randomly)
+    if (Math.random() < 0.3) {
+      const breakStart = d.clone().hour(13).minute(0).toDate();
+      const breakEnd = d.clone().hour(13).minute(30).toDate();
+      const breakDuration = 30;
+      
+      // Create break session
+      await prisma.attendance.create({
+        data: {
+          empId: employee.id,
+          date: d.clone().startOf("day").toDate(),
+          checkInTime: breakStart,
+          checkOutTime: breakEnd,
+          workTime: breakDuration,
+          sessionType: "BREAK",
+        },
+      });
+    }
+
+    // Calculate overtime for some days
+    const overtimeHours = Math.random() < 0.3 ? Math.floor(Math.random() * 3) : 0;
+    if (overtimeHours > 0) {
+      const overtimeMinutes = overtimeHours * 60;
+      const overtimePay = overtimeHours * 190; // July overtime rate
+
       await prisma.transaction.create({
         data: {
           empId: employee.id,
-          amount: (overtimeMinutes / 60) * 190, // July overtime rate
+          amount: overtimePay,
           date: d.toDate(),
           payType: "OVERTIME",
           description: `${overtimeMinutes} mins overtime on ${d.format("YYYY-MM-DD")}`,
@@ -150,6 +174,28 @@ async function main() {
       continue;
     }
 
+  // ------------------------- AUGUST -------------------------
+  const augStart = moment("2025-08-01");
+  const augEnd = moment("2025-08-31");
+
+  for (let d = augStart.clone(); d.isSameOrBefore(augEnd); d.add(1, "day")) {
+
+    // Random leave
+    if (Math.random() < 0.025) {
+      await prisma.leave.create({
+        data: {
+          empId: employee.id,
+          reason: "Sister's wedding",
+          fromDate: d.toDate(),
+          toDate: d.toDate(),
+          totalDays: 1,
+          type: "PAID",
+          status: "APPROVED",
+        },
+      });
+      continue;
+    }
+
     const checkIn = d.clone().hour(9).minute(10).toDate();
     const checkOut = d.clone().hour(18).minute(15).toDate();
     const overtimeHours = Math.random() < 0.2 ? Math.floor(Math.random() * 3) : 0;
@@ -161,8 +207,8 @@ async function main() {
         date: d.toDate(),
         checkInTime: checkIn,
         checkOutTime: checkOut,
-        overTime: overtimeMinutes,
-        status: "PRESENT",
+        workTime: 0,
+        sessionType: "WORK",
       },
     });
 
@@ -271,3 +317,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+}

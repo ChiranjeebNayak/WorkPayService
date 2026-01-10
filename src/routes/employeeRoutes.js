@@ -313,6 +313,9 @@ router.delete("/delete/:id", adminAuth, deleteEmployee);
  *         application/json:
  *           schema:
  *             $ref: '#/components/schemas/LoginRequest'
+ *           example:
+ *             phone: "8888888888"
+ *             password: "Emp@123"
  *     responses:
  *       200:
  *         description: Login successful

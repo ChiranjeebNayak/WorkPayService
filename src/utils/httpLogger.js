@@ -44,13 +44,16 @@ export const httpLogger = (req, res, next) => {
     });
 
     // 3️⃣ Outgoing
+    // Skip logging large HTML responses (like Swagger UI) to avoid console spam
+    const shouldLogBody = !res.get('Content-Type')?.includes('text/html');
+    
     logger.info("Outgoing API Response", {
       metadata: {
         apiName,
         messageNumber: requestContext.nextMessageNumber(),
         txnId,
         message: `Completed in ${duration}ms`,
-        res_body: responseBody,
+        ...(shouldLogBody && { res_body: responseBody }),
       }
     });
 

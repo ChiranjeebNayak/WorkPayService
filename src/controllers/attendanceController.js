@@ -30,8 +30,8 @@ const getTodayOfficeTimeUTC = (storedOfficeTime) => {
 
 
 // Check if employee has approved leave for a specific date
-const hasApprovedLeaveForDate = async (empId, targetDateUTC) => {
-  const leave = await req.db.leave.findFirst({
+const hasApprovedLeaveForDate = async (db, empId, targetDateUTC) => {
+  const leave = await db.leave.findFirst({
     where: {
       empId: empId,
       status: "APPROVED",
@@ -78,47 +78,70 @@ export const handleAttendance = async (req, res) => {
     console.log("DEBUG - Office checkin IST:", toISTString(officeCheckinUTC));
     console.log("DEBUG - Office checkout IST:", toISTString(officeCheckoutUTC));
 
-    // Fetch today's attendance
-    let attendance = await req.db.attendance.findFirst({
+    // Fetch today's attendance sessions
+    const todayAttendances = await req.db.attendance.findMany({
       where: {
         empId: Number(employeeId),
         date: { gte: todayStartUTC, lt: todayEndUTC },
       },
+      orderBy: { checkInTime: 'asc' }
     });
 
+    // Find active session (checked in but not checked out)
+    const activeSession = todayAttendances.find(att => !att.checkOutTime);
+    // Find completed sessions
+    const completedSessions = todayAttendances.filter(att => att.checkOutTime);
+
     if (type === "checkin") {
-      if (attendance)
-        return res.status(400).json({ message: `Employee already checked in today` });
+      // Allow check-in if:
+      // 1. No sessions today (first check-in)
+      // 2. One completed session (second check-in after lunch)
+      // 3. Max 2 sessions per day
+      if (activeSession) {
+        return res.status(400).json({ message: "Already checked in. Please check out first." });
+      }
+      
+      if (todayAttendances.length >= 2) {
+        return res.status(400).json({ message: "Maximum 2 check-ins allowed per day." });
+      }
 
-      // Calculate late threshold (30 minutes after office checkin)
-      const lateThresholdUTC = new Date(officeCheckinUTC.getTime() + 30 * 60 * 1000);
-      const status = nowUTC <= lateThresholdUTC ? "PRESENT" : "LATE";
+      // Determine session type and status
+      const sessionType = todayAttendances.length === 0 ? "WORK" : "WORK"; // Both are work sessions
+      const isSecondCheckin = todayAttendances.length === 1;
+      
+      // Calculate late threshold (30 minutes after office checkin for first session)
+      let status = "PRESENT";
+      if (!isSecondCheckin) {
+        const lateThresholdUTC = new Date(officeCheckinUTC.getTime() + 30 * 60 * 1000);
+        status = nowUTC <= lateThresholdUTC ? "PRESENT" : "LATE";
+      }
 
-      attendance = await req.db.attendance.create({
+      const attendance = await req.db.attendance.create({
         data: {
+          empId: Number(employeeId),
           date: todayStartUTC,
           checkInTime: nowUTC,
           checkOutTime: null,
-          overTime: 0,
+          workTime: 0,
+          sessionType,
           status,
-          employee: { connect: { id: Number(employeeId) } },
         },
       });
 
+      const sessionNumber = todayAttendances.length + 1;
       return res.status(200).json({
-        message: `Check-in ${status} at ${toISTString(nowUTC)}`,
+        message: `Check-in ${sessionNumber === 1 ? status : 'completed'} at ${toISTString(nowUTC)}`,
         attendance: {
           ...attendance,
           date: toISTString(attendance.date),
           checkInTime: toISTString(attendance.checkInTime),
         },
+        sessionNumber,
       });
     }
 
     if (type === "checkout") {
-      if (!attendance) return res.status(400).json({ message: "No check-in found for today" });
-      if (attendance.checkOutTime)
-        return res.status(400).json({ message: "Employee already checked out today", attendance });
+      if (!activeSession) return res.status(400).json({ message: "No active check-in found for today" });
 
       const employee = await req.db.employee.findUnique({
         where: { id: Number(employeeId) },
@@ -126,18 +149,31 @@ export const handleAttendance = async (req, res) => {
       });
       if (!employee) return res.status(404).json({ error: "Employee not found" });
 
-      // Calculate worked minutes
-      const totalWorkedMinutes = Math.floor((nowUTC - attendance.checkInTime) / (1000 * 60));
-      const totalOfficeMinutes = Math.floor((officeCheckoutUTC - officeCheckinUTC) / (1000 * 60));
-      const overtimeMinutes = totalWorkedMinutes > totalOfficeMinutes ? totalWorkedMinutes - totalOfficeMinutes : 0;
-
-      attendance = await req.db.attendance.update({
-        where: { id: attendance.id },
-        data: { checkOutTime: nowUTC, overTime: overtimeMinutes, employee: { connect: { id: Number(employeeId) } } },
+      // Calculate worked minutes for this session
+      const sessionWorkMinutes = Math.floor((nowUTC - activeSession.checkInTime) / (1000 * 60));
+      
+      // Update this session
+      const updatedSession = await req.db.attendance.update({
+        where: { id: activeSession.id },
+        data: { checkOutTime: nowUTC, workTime: sessionWorkMinutes },
       });
 
-      // Create overtime transaction if applicable
-      if (overtimeMinutes > 0) {
+      // Calculate total work time for the day (all completed sessions)
+      const allSessionsToday = await req.db.attendance.findMany({
+        where: {
+          empId: Number(employeeId),
+          date: { gte: todayStartUTC, lt: todayEndUTC },
+          checkOutTime: { not: null }
+        },
+      });
+      
+      const totalWorkMinutes = allSessionsToday.reduce((sum, session) => sum + session.workTime, 0);
+      const standardWorkMinutes = 8 * 60; // 8 hours in minutes
+      const overtimeMinutes = totalWorkMinutes > standardWorkMinutes ? totalWorkMinutes - standardWorkMinutes : 0;
+      
+      // Create overtime transaction if applicable (only after final checkout)
+      const sessionNumber = allSessionsToday.length;
+      if (overtimeMinutes > 0 && sessionNumber === 2) {
         const overtimeHours = overtimeMinutes / 60;
         const overtimePay = overtimeHours * employee.overtimeRate;
 
@@ -155,11 +191,15 @@ export const handleAttendance = async (req, res) => {
       return res.json({
         message: `Check-out done at ${toISTString(nowUTC)}`,
         attendance: {
-          ...attendance,
-          date: toISTString(attendance.date),
-          checkInTime: toISTString(attendance.checkInTime),
-          checkOutTime: toISTString(attendance.checkOutTime),
+          ...updatedSession,
+          date: toISTString(updatedSession.date),
+          checkInTime: toISTString(updatedSession.checkInTime),
+          checkOutTime: toISTString(updatedSession.checkOutTime),
         },
+        sessionWorkMinutes,
+        totalWorkMinutes,
+        overtimeMinutes,
+        sessionNumber,
       });
     }
 
@@ -347,8 +387,8 @@ export const getTodayAttendanceDashboard = async (req, res) => {
     const totalEmployees = employeeIds.length;
 
     // ---- Attendance Today (group by status) ----
-    const attendanceToday = await req.db.attendance.groupBy({
-      by: ["status"],
+    // Get unique employee attendance for today (handle multiple sessions)
+    const uniqueAttendanceToday = await req.db.attendance.findMany({
       where: {
         empId: { in: employeeIds },
         date: {
@@ -356,20 +396,33 @@ export const getTodayAttendanceDashboard = async (req, res) => {
           lte: todayEndUTC,
         },
       },
-      _count: {
+      select: {
+        empId: true,
         status: true,
       },
+      orderBy: {
+        checkInTime: 'asc'
+      }
     });
 
-    // Convert groupBy result into {status: count}
-    const counts = attendanceToday.reduce((acc, row) => {
-      acc[row.status] = row._count.status;
-      return acc;
-    }, {});
+    // Get unique employees and their first session status
+    const uniqueEmployeeStatus = new Map();
+    uniqueAttendanceToday.forEach(att => {
+      if (!uniqueEmployeeStatus.has(att.empId)) {
+        uniqueEmployeeStatus.set(att.empId, att.status);
+      }
+    });
 
-    const totalLate = counts["LATE"] || 0;
-    const totalPresent = counts["PRESENT"] || 0;
-    const totalAbsent = counts["ABSENT"] || 0;
+    // Count statuses
+    let totalLate = 0;
+    let totalPresent = 0;
+    let totalAbsent = 0;
+    
+    uniqueEmployeeStatus.forEach(status => {
+      if (status === "LATE") totalLate++;
+      else if (status === "PRESENT") totalPresent++;
+      else if (status === "ABSENT") totalAbsent++;
+    });
 
     // ---- Absent Employees List ----
     const absentees = await req.db.attendance.findMany({
@@ -737,7 +790,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
               date: todayStartUTC,
               checkInTime: null,
               checkOutTime: null,
-              overTime: 0,
+              workTime: 0,
               status: status
             }
           });

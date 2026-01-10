@@ -28,12 +28,26 @@ export const loginEmployee = async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    res.json({ message: `Employee login successful `, token });
+    res.json({ 
+      message: `Employee login successful `, 
+      token,
+      user: {
+        id: employee.id,
+        name: employee.name,
+        email: employee.email,
+        phone: employee.phone,
+        baseSalary: employee.baseSalary,
+        overtimeRate: employee.overtimeRate,
+        officeId: employee.officeId,
+        status: employee.status
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: "Failed to login employee", details: error.message });
   }
 };
 
+// Create Employee
 // ✅ Create Employee
 export const createEmployee = async (req, res) => {
   try {
@@ -59,6 +73,13 @@ export const createEmployee = async (req, res) => {
       return res.status(400).json({ error: "Employee with this email already exists" });
     }
 
+    console.log('Validating officeId:', officeId, '(type:', typeof officeId, ')');
+    const office = await req.db.office.findUnique({ where: { id: Number(officeId) } });
+    console.log('Found office:', office);
+    if (!office) {
+      return res.status(400).json({ error: "Invalid officeId: Office does not exist" });
+    }
+
     // hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -82,6 +103,17 @@ export const createEmployee = async (req, res) => {
     // Use transaction to create employee and holiday attendance records atomically
     const result = await req.db.$transaction(async (tx) => {
       // Create the employee
+      console.log('Creating employee with data:', {
+        name,
+        phone,
+        email,
+        baseSalary: Number(baseSalary),
+        overtimeRate: Number(overtimeRate),
+        officeId: Number(officeId),
+        adminId: Number(adminId),
+        joinedDate: new Date(joinedDate)
+      });
+      
       const employee = await tx.employee.create({
         data: {
           name,
@@ -206,6 +238,14 @@ export const updateEmployee = async (req, res) => {
       accountNumber,
       ifscCode
     };
+
+    // Validate office exists if officeId is being updated
+    if (officeId) {
+      const office = await req.db.office.findUnique({ where: { id: Number(officeId) } });
+      if (!office) {
+        return res.status(400).json({ error: "Invalid officeId: Office does not exist" });
+      }
+    }
 
     // If password provided, hash it
     if (password) {

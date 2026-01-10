@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `attendance` ADD COLUMN `workTime` INTEGER NOT NULL DEFAULT 0,
+    MODIFY `overTime` INTEGER NOT NULL DEFAULT 0;

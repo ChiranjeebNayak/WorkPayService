@@ -1,6 +1,12 @@
 import express from "express";
-import { handleAttendance ,getEmployeeAttendanceByMonth,getTodayAttendanceDashboard ,getEmployeeAttendanceByMonthInAdmin,
-    checkBulkAttendanceStatus,markAttendanceForAbsentEmployees,getEmployeesByAttendanceStatus
+import { 
+  handleAttendance,
+  getEmployeeAttendanceByMonth,
+  getTodayAttendanceDashboard,
+  getEmployeeAttendanceByMonthInAdmin,
+  checkBulkAttendanceStatus,
+  markAttendanceForAbsentEmployees,
+  getEmployeesByAttendanceStatus
 } from "../controllers/attendanceController.js";
 import { employeeAuth ,adminAuth} from "../Middleware/authMiddleware.js";
 
@@ -21,7 +27,13 @@ const router = express.Router();
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - type
  *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [checkin, checkout]
+ *                 example: "checkin"
  *               latitude:
  *                 type: number
  *                 format: float
@@ -36,7 +48,44 @@ const router = express.Router();
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Attendance'
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Check-in PRESENT at 2024-01-08 09:30:00"
+ *                 attendance:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     date:
+ *                       type: string
+ *                       example: "2024-01-08 00:00:00"
+ *                     checkInTime:
+ *                       type: string
+ *                       example: "2024-01-08 09:30:00"
+ *                     checkOutTime:
+ *                       type: string
+ *                       nullable: true
+ *                     workTime:
+ *                       type: integer
+ *                       description: Total work time in minutes
+ *                       example: 480
+ *                     workTimeHours:
+ *                       type: string
+ *                       description: Work time in hours
+ *                       example: "8.00"
+ *                     overTime:
+ *                       type: integer
+ *                       description: Overtime in minutes
+ *                       example: 60
+ *                     overtimeHours:
+ *                       type: string
+ *                       description: Overtime in hours
+ *                       example: "1.00"
+ *                     status:
+ *                       type: string
+ *                       enum: [PRESENT, LATE, ABSENT, HOLIDAY]
  *       401:
  *         description: Unauthorized
  *         content:
