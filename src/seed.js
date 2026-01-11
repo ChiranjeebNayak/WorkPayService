@@ -157,29 +157,6 @@ async function main() {
 
   for (let d = augStart.clone(); d.isSameOrBefore(augEnd); d.add(1, "day")) {
 
-
-    // Random leave
-    if (Math.random() < 0.025) {
-      await prisma.leave.create({
-        data: {
-          empId: employee.id,
-          reason: "Sister's wedding",
-          fromDate: d.toDate(),
-          toDate: d.toDate(),
-          totalDays: 1,
-          type: "PAID",
-          status: "APPROVED",
-        },
-      });
-      continue;
-    }
-
-  // ------------------------- AUGUST -------------------------
-  const augStart = moment("2025-08-01");
-  const augEnd = moment("2025-08-31");
-
-  for (let d = augStart.clone(); d.isSameOrBefore(augEnd); d.add(1, "day")) {
-
     // Random leave
     if (Math.random() < 0.025) {
       await prisma.leave.create({
@@ -264,7 +241,7 @@ async function main() {
         date: d.toDate(),
         checkInTime: checkIn,
         checkOutTime: checkOut,
-        overTime: overtimeMinutes,
+        workTime: overtimeMinutes,
         status: "PRESENT",
       },
     });
@@ -317,4 +294,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-}
