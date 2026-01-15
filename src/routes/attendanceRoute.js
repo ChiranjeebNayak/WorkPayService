@@ -52,7 +52,7 @@ const router = express.Router();
  *               properties:
  *                 message:
  *                   type: string
- *                   example: "Check-in PRESENT at 2024-01-08 09:30:00"
+ *                   example: "Check-in PRESENT at 2025-01-08 09:30:00"
  *                 attendance:
  *                   type: object
  *                   properties:
@@ -60,10 +60,10 @@ const router = express.Router();
  *                       type: integer
  *                     date:
  *                       type: string
- *                       example: "2024-01-08 00:00:00"
+ *                       example: "2025-01-08 00:00:00"
  *                     checkInTime:
  *                       type: string
- *                       example: "2024-01-08 09:30:00"
+ *                       example: "2025-01-08 09:30:00"
  *                     checkOutTime:
  *                       type: string
  *                       nullable: true
@@ -113,7 +113,7 @@ router.post("/mark", employeeAuth, handleAttendance);
  *         name: year
  *         schema:
  *           type: integer
- *           example: 2024
+ *           example: 2025
  *         description: Year
  *     responses:
  *       200:
@@ -378,7 +378,7 @@ router.post("/finalizeAttendance/:officeId",adminAuth, markAttendanceForAbsentEm
  *         name: year
  *         schema:
  *           type: integer
- *           example: 2024
+ *           example: 2025
  *         description: Year
  *     responses:
  *       200:
