@@ -2,6 +2,11 @@ import logger from "./logger.js";
 import { requestContext } from "./requestContext.js";
 
 export const httpLogger = (req, res, next) => {
+  // Skip logging for /api-docs endpoints and static assets to reduce console spam
+  if (req.originalUrl.startsWith('/api-docs')) {
+    return next();
+  }
+
   const start = Date.now();
   const oldSend = res.send.bind(res);
 

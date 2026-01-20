@@ -28,8 +28,8 @@ export const loginEmployee = async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    res.json({ 
-      message: `Employee login successful `, 
+    res.json({
+      message: `Employee login successful `,
       token,
       user: {
         id: employee.id,
@@ -55,9 +55,9 @@ export const createEmployee = async (req, res) => {
     if (!req.admin || !req.admin.id) {
       return res.status(401).json({ error: "Admin authentication required" });
     }
-    
+
     const adminId = req.admin.id; // from adminAuth middleware
-    const { name, phone, email, password, baseSalary, overtimeRate, officeId, joinedDate,accountNumber,ifscCode } = req.body;
+    const { name, phone, email, password, baseSalary, overtimeRate, officeId, joinedDate, accountNumber, ifscCode } = req.body;
 
     if (!name || !phone || !email || !password || !baseSalary || !overtimeRate || !officeId || !adminId) {
       return res.status(400).json({ error: "All required fields must be provided" });
@@ -113,7 +113,7 @@ export const createEmployee = async (req, res) => {
         adminId: Number(adminId),
         joinedDate: new Date(joinedDate)
       });
-      
+
       const employee = await tx.employee.create({
         data: {
           name,
@@ -152,7 +152,7 @@ export const createEmployee = async (req, res) => {
     });
 
     // Prepare holiday details for response
-    const holidayDates = upcomingHolidays.map((holiday) => 
+    const holidayDates = upcomingHolidays.map((holiday) =>
       moment.utc(holiday.date).tz("Asia/Kolkata").format("YYYY-MM-DD")
     );
 
@@ -166,8 +166,8 @@ export const createEmployee = async (req, res) => {
         baseSalary: result.employee.baseSalary,
         overtimeRate: result.employee.overtimeRate,
         joinedDate: result.employee.joinedDate,
-        accountNumber:result.accountNumber,
-        ifscCode:result.ifscCode
+        accountNumber: result.accountNumber,
+        ifscCode: result.ifscCode
       },
       holidayAttendance: {
         created: result.holidayAttendanceCount,
@@ -202,18 +202,20 @@ export const getEmployeeById = async (req, res) => {
 
     if (!employee) return res.status(404).json({ error: "Employee not found" });
 
-    res.json({message: `Employee fetched successfully: ${employee.name}`, data: {
-      id: employee.id,
-      name: employee.name,
-      phone: employee.phone,
-      email: employee.email,
-      baseSalary: employee.baseSalary,
-      overtimeRate: employee.overtimeRate,
-      leaveBalance:employee.leaveBalance,
-      joinedDate:employee.joinedDate,
-      accountNumber:employee.accountNumber,
-      ifscCode:employee.ifscCode
-    } });
+    res.json({
+      message: `Employee fetched successfully: ${employee.name}`, data: {
+        id: employee.id,
+        name: employee.name,
+        phone: employee.phone,
+        email: employee.email,
+        baseSalary: employee.baseSalary,
+        overtimeRate: employee.overtimeRate,
+        leaveBalance: employee.leaveBalance,
+        joinedDate: employee.joinedDate,
+        accountNumber: employee.accountNumber,
+        ifscCode: employee.ifscCode
+      }
+    });
   } catch (error) {
     console.error("Error fetching employee:", error);
     res.status(500).json({ error: "Failed to fetch employee" });
@@ -225,16 +227,16 @@ export const updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
     const adminId = req.admin.id; // from adminAuth middleware
-    const { name, phone, email, password, baseSalary, overtimeRate, officeId,accountNumber,ifscCode } = req.body;
+    const { name, phone, email, password, baseSalary, overtimeRate, officeId, accountNumber, ifscCode } = req.body;
 
     const updateData = {
       name,
       phone,
       email,
-      baseSalary:Number(baseSalary),
-      overtimeRate:Number(overtimeRate),
-      officeId:Number(officeId),
-      adminId:Number(adminId),
+      baseSalary: Number(baseSalary),
+      overtimeRate: Number(overtimeRate),
+      officeId: Number(officeId),
+      adminId: Number(adminId),
       accountNumber,
       ifscCode
     };
@@ -257,16 +259,18 @@ export const updateEmployee = async (req, res) => {
       data: updateData,
     });
 
-    res.json({ message: `Employee updated successfully: ${updatedEmployee.name}`, data: {
-      id: updatedEmployee.id,
-      name: updatedEmployee.name,
-      phone: updatedEmployee.phone,
-      email: updatedEmployee.email,
-      baseSalary: updatedEmployee.baseSalary,
-      overtimeRate: updatedEmployee.overtimeRate,
-      accountNumber:updatedEmployee.accountNumber,
-      ifscCode:updatedEmployee.ifscCode
-    } });
+    res.json({
+      message: `Employee updated successfully: ${updatedEmployee.name}`, data: {
+        id: updatedEmployee.id,
+        name: updatedEmployee.name,
+        phone: updatedEmployee.phone,
+        email: updatedEmployee.email,
+        baseSalary: updatedEmployee.baseSalary,
+        overtimeRate: updatedEmployee.overtimeRate,
+        accountNumber: updatedEmployee.accountNumber,
+        ifscCode: updatedEmployee.ifscCode
+      }
+    });
   } catch (error) {
     console.error("Error updating employee:", error);
     res.status(500).json({ error: "Failed to update employee" });
@@ -448,17 +452,19 @@ export const getEmployeeDashboard = async (req, res) => {
         checkinTime: attendance ? formatTimeOnlyIST(attendance.checkInTime) : null,
         checkoutTime: attendance ? formatTimeOnlyIST(attendance.checkOutTime) : null,
         overtime: attendance ? attendance.overTime : null,
-        accountNumber:employee.accountNumber,
-        ifscCode:employee.ifscCode
+        accountNumber: employee.accountNumber,
+        ifscCode: employee.ifscCode
       },
       officeDetails: {
+        id: employee.office.id,
+        name: employee.office.name,
         latitude: employee.office.latitude,
         longitude: employee.office.longitude,
         checkin: formatTimeOnlyIST(employee.office.checkin),
         checkout: formatTimeOnlyIST(employee.office.checkout),
         breakTime: employee.office.breakTime, // in minutes
-        range:employee.office.range
-      },
+        range: employee.office.range
+      }
     };
 
     res.json(response);
@@ -468,15 +474,10 @@ export const getEmployeeDashboard = async (req, res) => {
   }
 };
 
-
-
-
-// ✅ Update Employee
 export const updateBankDetails = async (req, res) => {
   try {
-
-      const employeeId = req.employee.id;
-    const { accountNumber,ifscCode } = req.body;
+    const employeeId = req.employee.id;
+    const { accountNumber, ifscCode } = req.body;
 
     const updateData = {
       accountNumber,
@@ -490,10 +491,13 @@ export const updateBankDetails = async (req, res) => {
       data: updateData,
     });
 
-    res.json({ message: `Employee updated successfully: ${updatedEmployee.name} Bank Details`, data: {
-      accountNumber:updatedEmployee.accountNumber,
-      ifscCode:updatedEmployee.ifscCode
-    } });
+    res.json({
+      message: `Employee updated successfully: ${updatedEmployee.name} Bank Details`, data: {
+        accountNumber: updatedEmployee.accountNumber,
+        ifscCode: updatedEmployee.ifscCode
+      }
+    });
+
   } catch (error) {
     console.error("Error updating employee:", error);
     res.status(500).json({ error: "Failed to update employee" });

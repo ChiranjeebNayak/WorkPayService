@@ -462,25 +462,80 @@ router.get("/phone/:phone", getEmployeeByPhone); // Get employee by phone (to ch
  *             schema:
  *               type: object
  *               properties:
- *                 employee:
- *                   $ref: '#/components/schemas/Employee'
- *                 attendanceSummary:
+ *                 employeeDetails:
  *                   type: object
  *                   properties:
- *                     presentDays:
+ *                     id:
  *                       type: integer
- *                     absentDays:
+ *                       example: 1
+ *                     name:
+ *                       type: string
+ *                       example: "Ravi Kumar"
+ *                     phone:
+ *                       type: string
+ *                       example: "8888888888"
+ *                     email:
+ *                       type: string
+ *                       example: "ravi@demo.com"
+ *                     leaveBalance:
  *                       type: integer
- *                     lateDays:
+ *                       example: 10
+ *                     joinedDate:
+ *                       type: string
+ *                       example: "2025-08-01 05:30 AM"
+ *                     baseSalary:
  *                       type: integer
- *                     leaveDays:
+ *                       example: 30000
+ *                     overtimeRate:
  *                       type: integer
- *                 leaveBalance:
- *                   type: integer
- *                 recentTransactions:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Transaction'
+ *                       example: 200
+ *                     checkinTime:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                     checkoutTime:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                     overtime:
+ *                       type: integer
+ *                       nullable: true
+ *                       example: null
+ *                     accountNumber:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                     ifscCode:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                 officeDetails:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     name:
+ *                       type: string
+ *                       example: "Main Office"
+ *                     latitude:
+ *                       type: number
+ *                       example: 12.9716
+ *                     longitude:
+ *                       type: number
+ *                       example: 77.5946
+ *                     checkin:
+ *                       type: string
+ *                       example: "09:00 AM"
+ *                     checkout:
+ *                       type: string
+ *                       example: "06:30 PM"
+ *                     breakTime:
+ *                       type: integer
+ *                       example: 60
+ *                     range:
+ *                       type: integer
+ *                       example: 1000
  *       401:
  *         description: Unauthorized
  *         content:
