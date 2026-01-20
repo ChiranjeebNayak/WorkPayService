@@ -2,6 +2,11 @@ import logger from "./logger.js";
 import { requestContext } from "./requestContext.js";
 
 export const httpLogger = (req, res, next) => {
+  // Skip logging for /api-docs endpoints and static assets to reduce console spam
+  if (req.originalUrl.startsWith('/api-docs')) {
+    return next();
+  }
+
   const start = Date.now();
   const oldSend = res.send.bind(res);
 
@@ -44,13 +49,16 @@ export const httpLogger = (req, res, next) => {
     });
 
     // 3️⃣ Outgoing
+    // Skip logging large HTML responses (like Swagger UI) to avoid console spam
+    const shouldLogBody = !res.get('Content-Type')?.includes('text/html');
+    
     logger.info("Outgoing API Response", {
       metadata: {
         apiName,
         messageNumber: requestContext.nextMessageNumber(),
         txnId,
         message: `Completed in ${duration}ms`,
-        res_body: responseBody,
+        ...(shouldLogBody && { res_body: responseBody }),
       }
     });
 

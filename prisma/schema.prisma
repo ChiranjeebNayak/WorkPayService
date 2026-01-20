@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,25 +7,114 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum PayType {
+model admin {
+  id       Int        @id @default(autoincrement())
+  name     String
+  phone    String     @unique(map: "Admin_phone_key")
+  email    String     @unique(map: "Admin_email_key")
+  password String
+  employee employee[]
+}
+
+model attendance {
+  id              Int               @id @default(autoincrement())
+  empId           Int
+  date            DateTime
+  checkInTime     DateTime
+  checkOutTime    DateTime?
+  workTime        Int               @default(0)
+  parentSessionId Int?
+  sessionType     String            @default("WORK")
+  status          attendance_status @default(PRESENT)
+  employee        employee          @relation(fields: [empId], references: [id], map: "Attendance_empId_fkey")
+
+  @@index([empId, date], map: "Attendance_empId_date_idx")
+}
+
+model employee {
+  id            Int             @id @default(autoincrement())
+  name          String
+  phone         String          @unique(map: "Employee_phone_key")
+  email         String          @unique(map: "Employee_email_key")
+  password      String
+  baseSalary    Int
+  overtimeRate  Int
+  leaveBalance  Int             @default(10)
+  officeId      Int
+  adminId       Int
+  joinedDate    DateTime?
+  status        employee_status @default(ACTIVE)
+  accountNumber String?
+  ifscCode      String?
+  attendance    attendance[]
+  admin         admin           @relation(fields: [adminId], references: [id], map: "Employee_adminId_fkey")
+  office        office          @relation(fields: [officeId], references: [id], map: "Employee_officeId_fkey")
+  leave         leave[]
+  transaction   transaction[]
+
+  @@index([adminId], map: "Employee_adminId_fkey")
+  @@index([officeId], map: "Employee_officeId_fkey")
+}
+
+model holiday {
+  id          Int      @id @default(autoincrement())
+  description String
+  date        DateTime
+}
+
+model leave {
+  id        Int          @id @default(autoincrement())
+  empId     Int
+  reason    String
+  applyDate DateTime     @default(now())
+  fromDate  DateTime
+  toDate    DateTime
+  totalDays Int
+  status    leave_status @default(PENDING)
+  type      leave_type
+  employee  employee     @relation(fields: [empId], references: [id], map: "Leave_empId_fkey")
+
+  @@index([empId], map: "Leave_empId_fkey")
+}
+
+model office {
+  id        Int        @id @default(autoincrement())
+  latitude  Float
+  longitude Float
+  checkin   DateTime
+  checkout  DateTime
+  breakTime Int        @default(0)
+  name      String
+  range     Int        @default(1000)
+  employee  employee[]
+}
+
+model transaction {
+  id          Int                 @id @default(autoincrement())
+  empId       Int
+  amount      Int
+  date        DateTime
+  payType     transaction_payType
+  description String?
+  employee    employee            @relation(fields: [empId], references: [id], map: "Transaction_empId_fkey")
+
+  @@index([empId], map: "Transaction_empId_fkey")
+}
+
+enum transaction_payType {
   ADVANCE
   SALARY
   OVERTIME
   DEDUCTION
 }
 
-enum LeaveStatus {
+enum leave_status {
   PENDING
   APPROVED
   REJECTED
 }
 
-enum LeaveType {
-  PAID
-  UNPAID
-}
-
-enum attendanceStatus {
+enum attendance_status {
   PRESENT
   ABSENT
   LATE
@@ -39,90 +122,12 @@ enum attendanceStatus {
   HOLIDAY
 }
 
-enum EmployeeActiveStatus {
+enum leave_type {
+  PAID
+  UNPAID
+}
+
+enum employee_status {
   ACTIVE
   INACTIVE
-}
-
-model Admin {
-  id        Int        @id @default(autoincrement())
-  name      String
-  phone     String     @unique
-  email     String     @unique
-  password  String
-  employees Employee[]
-}
-
-model Office {
-  id        Int        @id @default(autoincrement())
-  name      String
-  latitude  Float
-  longitude Float
-  checkin   DateTime
-  checkout  DateTime
-  breakTime Int        @default(0)
-  employees Employee[]
-  range     Int        @default(1000)
-}
-
-model Holiday {
-  id          Int      @id @default(autoincrement())
-  description String
-  date        DateTime
-}
-
-model Employee {
-  id            Int                  @id @default(autoincrement())
-  name          String
-  phone         String               @unique
-  email         String               @unique
-  joinedDate    DateTime?
-  password      String
-  baseSalary    Int
-  overtimeRate  Int
-  leaveBalance  Int                  @default(10) // initial balance, will decrease as leaves are approved
-  status        EmployeeActiveStatus @default(ACTIVE)
-  officeId      Int
-  adminId       Int
-  accountNumber String?
-  ifscCode      String?
-  office        Office               @relation(fields: [officeId], references: [id])
-  admin         Admin                @relation(fields: [adminId], references: [id])
-  leaves        Leave[]
-  attendances   Attendance[]
-  transactions  Transaction[]
-}
-
-model Leave {
-  id        Int         @id @default(autoincrement())
-  empId     Int
-  reason    String
-  applyDate DateTime    @default(now())
-  fromDate  DateTime
-  toDate    DateTime
-  totalDays Int
-  type      LeaveType
-  status    LeaveStatus @default(PENDING)
-  employee  Employee    @relation(fields: [empId], references: [id])
-}
-
-model Attendance {
-  id           Int              @id @default(autoincrement())
-  empId        Int
-  date         DateTime
-  checkInTime  DateTime? // nullable
-  checkOutTime DateTime? // nullable
-  overTime     Int
-  status       attendanceStatus
-  employee     Employee         @relation(fields: [empId], references: [id])
-}
-
-model Transaction {
-  id          Int      @id @default(autoincrement())
-  empId       Int
-  amount      Int
-  date        DateTime
-  payType     PayType
-  description String?
-  employee    Employee @relation(fields: [empId], references: [id])
 }

@@ -7,20 +7,28 @@ import attendanceRoutes from "./routes/attendanceRoute.js";
 import leaveRoutes from "./routes/leaveRoutes.js";
 import transactionRouter from "./routes/transactionRoutes.js"
 import holidayRoutes from "./routes/holidayRoutes.js";
+import swaggerUi from 'swagger-ui-express';
+import { specs } from './config/swagger.js';
+import prisma from './prisma.js';
 
 // imports for logging
 import logger from "./utils/logger.js"
 import { httpLogger } from "./utils/httpLogger.js";
 import { requestContext } from "./utils/requestContext.js";
 import crypto from "crypto";
-import { attachDbLogger } from "./Middleware/dbLoggerMiddleware.js";
-
+// import { attachDbLogger } from "./Middleware/dbLoggerMiddleware.js";
 
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// Attach Prisma client directly to request
+app.use((req, res, next) => {
+  req.db = prisma;
+  next();
+});
 
 // Logging utils use
 app.use((req, res, next) => {
@@ -29,7 +37,8 @@ app.use((req, res, next) => {
   requestContext.run({ txnId, apiName }, () => next());
 });
 
-app.use(attachDbLogger);
+// Temporarily disable dbLogger to fix Symbol conversion issues
+// app.use(attachDbLogger);
 app.use(httpLogger);
 
 app.get("/", (req, res) => {
@@ -39,6 +48,13 @@ app.get("/", (req, res) => {
   }
   res.send(responsePayload);
 })
+
+// Swagger Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
+  explorer: true,
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: "WorkPay API Documentation"
+}));
 
 app.use("/api/admins", adminRoutes);
 app.use("/api/offices", officeRoutes);
