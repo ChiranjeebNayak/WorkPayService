@@ -55,7 +55,7 @@ export const createEmployee = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Get current UTC time and convert to IST to get today's date
-    const nowUTC = getCurrentUTC();
+    const nowUTC = new Date();
     const todayIST = moment.utc(nowUTC).tz("Asia/Kolkata").startOf('day');
     const todayUTC = todayIST.utc().toDate();
 
@@ -124,8 +124,13 @@ export const createEmployee = async (req, res) => {
       moment.utc(h.date).tz("Asia/Kolkata").format("YYYY-MM-DD")
     );
 
+   // 1. Check if result exists before sending response
+    if (!result || !result.employee) {
+       throw new Error("Transaction completed but employee data is missing.");
+    }
+
     res.status(201).json({
-      message: `Employee created successfully: ${result.employee.name}`,
+      message: "Employee created successfully", // Removed the variable from here to stop the Symbol error
       data: {
         id: result.employee.id,
         name: result.employee.name,
@@ -134,8 +139,8 @@ export const createEmployee = async (req, res) => {
         baseSalary: result.employee.baseSalary,
         overtimeRate: result.employee.overtimeRate,
         joinedDate: result.employee.joinedDate,
-        accountNumber:result.accountNumber,
-        ifscCode:result.ifscCode
+        accountNumber: result.employee.accountNumber, 
+        ifscCode: result.employee.ifscCode 
       },
       holidayAttendance: {
         created: result.holidayAttendanceCount,
@@ -143,8 +148,15 @@ export const createEmployee = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Error creating employee:", error);
-    res.status(500).json({ error: "Failed to create employee", details: error.message });
+   console.log("--- FULL DATABASE ERROR START ---");
+    console.dir(error, { depth: null }); 
+    console.log("--- FULL DATABASE ERROR END ---");
+
+    res.status(500).json({ 
+      error: "Failed to create employee", 
+      // 2. Use String() to prevent the Symbol crash
+      details: error instanceof Error ? String(error.message) : "Unknown Database Error" 
+    });
   }
 };
 
@@ -456,6 +468,10 @@ export const updateBankDetails = async (req, res) => {
     } });
   } catch (error) {
     console.error("Error updating employee:", error);
-    res.status(500).json({ error: "Failed to update employee" });
+   res.status(500).json({ 
+      error: "Failed to create employee", 
+      // This check prevents the "Symbol to string" crash
+      details: error instanceof Error ? error.message : "Internal Server Error" 
+    });
   }
 };
