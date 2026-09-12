@@ -8,21 +8,21 @@ import {
   resetPasswordWithPhone,
   getAdminByPhone
 } from "../controllers/adminController.js";
+import { adminAuth } from "../Middleware/authMiddleware.js";
 
 const router = Router();
 
-router.post("/", createAdmin);        // Create
-router.get("/:id", getAdminById);     // Read one
-router.put("/:id", updateAdmin);      // Update
-router.delete("/:id", deleteAdmin);   // Delete
+router.post("/", createAdmin);                    // Create admin
+router.get("/:id", adminAuth, getAdminById);      // Read one (protected)
+router.put("/:id", adminAuth, updateAdmin);       // Update (protected)
+router.delete("/:id", adminAuth, deleteAdmin);    // Delete (protected)
 
-//login routes
-router.post("/login", loginAdmin);   // Login
-// Password reset via phone (Firebase auth flow)
-router.post("/reset-password-phone", resetPasswordWithPhone);
+// Login and recovery routes
+router.post("/login", loginAdmin);                // Login
+router.post("/reset-password-phone", resetPasswordWithPhone); // Password reset via phone
 
 // Get admin by phone
-router.get("/by-phone/:phone", getAdminByPhone);
+router.get("/by-phone/:phone", adminAuth, getAdminByPhone);
 
 
 export default router;

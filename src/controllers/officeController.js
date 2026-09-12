@@ -47,11 +47,10 @@ export const createOffice = async (req, res) => {
 // ✅ Get Office Settings 
 export const getOffices = async (req, res) => {
   try {
-    const offices = await req.db.office.findMany();
-    if (!offices || offices.length === 0) {
-      return res.status(404).json({ error: "No office settings found" });
-    }
-    res.json({message: "Office settings fetched successfully", offices });
+    const offices = await req.db.office.findMany({
+      orderBy: { id: "asc" }
+    });
+    res.json({ message: "Office settings fetched successfully", offices: offices || [] });
   } catch (error) {
     console.error("Error fetching office:", error);
     res.status(500).json({ error: "Failed to fetch office" });

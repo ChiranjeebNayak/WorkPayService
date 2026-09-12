@@ -349,34 +349,31 @@ export const updateLeaveStatus = async (req, res) => {
 
     if (!leave) return res.status(404).json({ error: "Leave not found" });
 
-    let totalDeductionAmount = 0;
-    let deductionDetails = [];
+    if (leave.status === status) {
+      return res.status(400).json({ error: `Leave is already ${status.toLowerCase()}` });
+    }
 
-    if (status === "APPROVED" && leave.type === "PAID") {
-      await req.db.employee.update({
-        where: { id: leave.empId },
-        data: { leaveBalance: { decrement: leave.totalDays } },
+    if (leave.status !== "PENDING") {
+      return res.status(400).json({
+        error: `Cannot update a leave that has already been ${leave.status.toLowerCase()}`,
       });
     }
 
+    let totalDeductionAmount = 0;
+    let deductionDetails = [];
+    let transactions = [];
+
     if (status === "APPROVED" && leave.type === "UNPAID") {
-      const transactions = [];
       const start = new Date(leave.fromDate);
       const end = new Date(leave.toDate);
-
-      // Get employee's base salary for dynamic calculation
       const employeeSalary = leave.employee.baseSalary;
 
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        // Calculate total days in the month of this leave day
         const leaveDay = moment.utc(d).tz("Asia/Kolkata");
         const totalDaysInMonth = leaveDay.daysInMonth();
-        
-        // Calculate per-day deduction amount
         const perDayAmount = Math.round(employeeSalary / totalDaysInMonth);
         totalDeductionAmount += perDayAmount;
 
-        // Format the leave date for description
         const leaveDateIST = formatDateIST(d);
 
         transactions.push({
@@ -387,33 +384,41 @@ export const updateLeaveStatus = async (req, res) => {
           date: new Date(d),
         });
 
-        // Store deduction details for response
         deductionDetails.push({
           date: leaveDateIST,
           amount: perDayAmount,
           daysInMonth: totalDaysInMonth
         });
       }
-
-      if (transactions.length > 0) {
-        await req.db.transaction.createMany({ data: transactions });
-        console.log(`DEBUG - Created ${transactions.length} deduction transactions for unpaid leave. Total: ₹${totalDeductionAmount}`);
-      }
     }
 
-    const updatedLeave = await req.db.leave.update({
-      where: { id: Number(leaveId) },
-      data: { status },
-      include: { 
-        employee: { 
-          select: { 
-            id: true, 
-            name: true, 
-            leaveBalance: true,
-            baseSalary: true
+    // Execute updates atomically inside a transaction
+    const updatedLeave = await req.db.$transaction(async (tx) => {
+      if (status === "APPROVED" && leave.type === "PAID") {
+        await tx.employee.update({
+          where: { id: leave.empId },
+          data: { leaveBalance: { decrement: leave.totalDays } },
+        });
+      }
+
+      if (status === "APPROVED" && leave.type === "UNPAID" && transactions.length > 0) {
+        await tx.transaction.createMany({ data: transactions });
+      }
+
+      return tx.leave.update({
+        where: { id: Number(leaveId) },
+        data: { status },
+        include: { 
+          employee: { 
+            select: { 
+              id: true, 
+              name: true, 
+              leaveBalance: true,
+              baseSalary: true
+            } 
           } 
-        } 
-      },
+        },
+      });
     });
 
     // Prepare response with deduction information
@@ -440,7 +445,7 @@ export const updateLeaveStatus = async (req, res) => {
 
   } catch (error) {
     console.error("Error updating leave status:", error);
-    res.status(500).json({ error: "Failed to update leave status", details: error.message });
+    res.status(500).json({ error: "Failed to update leave status" });
   }
 };
 

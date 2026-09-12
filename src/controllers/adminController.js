@@ -3,22 +3,39 @@ import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
-// ✅ Admin Login
+// ✅ Admin Login (supports email or phone)
 export const loginAdmin = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, phone, password } = req.body;
 
-    const admin = await req.db.admin.findUnique({ where: { email } });
+    if ((!email && !phone) || !password) {
+      return res.status(400).json({ error: "Email or phone, and password are required" });
+    }
+
+    const admin = await req.db.admin.findFirst({
+      where: {
+        OR: [
+          email ? { email } : undefined,
+          phone ? { phone } : undefined,
+        ].filter(Boolean),
+      },
+    });
+
     if (!admin) return res.status(404).json({ error: "Admin not found" });
 
     const isPasswordValid = await bcrypt.compare(password, admin.password);
     if (!isPasswordValid) return res.status(401).json({ error: "Invalid credentials" });
 
-    const token = jwt.sign({ id: admin.id, email: admin.email, role: "admin" }, JWT_SECRET, { expiresIn: "1d" });
+    const token = jwt.sign(
+      { id: admin.id, email: admin.email, phone: admin.phone, role: "admin" },
+      JWT_SECRET,
+      { expiresIn: "1d" }
+    );
 
     res.json({ message: "Login successful", token });
   } catch (error) {
-    res.status(500).json({ error: "Failed to login admin", details: error.message });
+    console.error("Admin Login error:", error);
+    res.status(500).json({ error: "Failed to login admin" });
   }
 };
 
@@ -26,47 +43,80 @@ export const loginAdmin = async (req, res) => {
 export const createAdmin = async (req, res) => {
   try {
     const { name, phone, email, password } = req.body;
+
+    if (!name || !phone || !email || !password) {
+      return res.status(400).json({ error: "Name, phone, email, and password are required" });
+    }
+
+    const existingAdmin = await req.db.admin.findFirst({
+      where: {
+        OR: [{ email }, { phone }],
+      },
+    });
+
+    if (existingAdmin) {
+      return res.status(400).json({
+        error: existingAdmin.email === email
+          ? "An admin with this email already exists"
+          : "An admin with this phone number already exists",
+      });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const admin = await req.db.admin.create({
       data: { name, phone, email, password: hashedPassword },
+      select: { id: true, name: true, phone: true, email: true },
     });
 
     res.status(201).json({
       message: "Admin created successfully",
-      admin: { id: admin.id, email: admin.email, phone: admin.phone, name: admin.name },
+      admin,
     });
   } catch (error) {
-    res.status(500).json({ error: "Failed to create admin", details: error.message });
+    console.error("Create Admin error:", error);
+    res.status(500).json({ error: "Failed to create admin" });
   }
 };
 
-// Get Admin by ID
+// Get Admin by ID (excludes password hash)
 export const getAdminById = async (req, res) => {
   try {
     const { id } = req.params;
-    const admin = await req.db.admin.findUnique({ where: { id: Number(id) } });
+    const admin = await req.db.admin.findUnique({
+      where: { id: Number(id) },
+      select: { id: true, name: true, phone: true, email: true },
+    });
+
     if (!admin) return res.status(404).json({ error: "Admin not found" });
     res.json(admin);
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch admin", details: error.message });
+    console.error("Fetch Admin error:", error);
+    res.status(500).json({ error: "Failed to fetch admin" });
   }
 };
 
-// Update Admin
+// Update Admin (excludes password hash)
 export const updateAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email } = req.body;
+    const { name, email, phone } = req.body;
+
+    const data = {};
+    if (name) data.name = name;
+    if (email) data.email = email;
+    if (phone) data.phone = phone;
 
     const updatedAdmin = await req.db.admin.update({
       where: { id: Number(id) },
-      data: { name, email },
+      data,
+      select: { id: true, name: true, phone: true, email: true },
     });
 
     res.json(updatedAdmin);
   } catch (error) {
-    res.status(500).json({ error: "Failed to update admin", details: error.message });
+    console.error("Update Admin error:", error);
+    res.status(500).json({ error: "Failed to update admin" });
   }
 };
 
@@ -78,7 +128,8 @@ export const deleteAdmin = async (req, res) => {
 
     res.json({ message: "Admin deleted successfully" });
   } catch (error) {
-    res.status(500).json({ error: "Failed to delete admin", details: error.message });
+    console.error("Delete Admin error:", error);
+    res.status(500).json({ error: "Failed to delete admin" });
   }
 };
 
@@ -96,7 +147,8 @@ export const resetPasswordWithPhone = async (req, res) => {
 
     res.json({ message: "Password reset successfully" });
   } catch (error) {
-    res.status(500).json({ error: "Something went wrong", details: error.message });
+    console.error("Reset Admin Password error:", error);
+    res.status(500).json({ error: "Something went wrong" });
   }
 };
 
@@ -109,6 +161,7 @@ export const getAdminByPhone = async (req, res) => {
     const admin = await req.db.admin.findUnique({ where: { phone } });
     res.json({ adminFound: !!admin });
   } catch (error) {
-    res.status(500).json({ error: "Something went wrong", details: error.message });
+    console.error("Get Admin by Phone error:", error);
+    res.status(500).json({ error: "Something went wrong" });
   }
 };

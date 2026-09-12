@@ -1,7 +1,12 @@
+import dotenv from "dotenv";
+dotenv.config({ path: [".env.local", ".env"] });
+
 import { PrismaClient } from "@prisma/client";
 import { requestContext } from "./utils/requestContext.js";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  log: [{ emit: "event", level: "query" }],
+});
 
 // Capture each query in the current request context
 prisma.$on("query", (e) => {
@@ -13,15 +18,6 @@ prisma.$on("query", (e) => {
       dbExecutionTimeMs: e.duration,
     });
   }
-});
-
-process.on("SIGINT", async () => {
-  await prisma.$disconnect();
-  process.exit(0);
-});
-process.on("SIGTERM", async () => {
-  await prisma.$disconnect();
-  process.exit(0);
 });
 
 export default prisma;

@@ -14,31 +14,80 @@ import { httpLogger } from "./utils/httpLogger.js";
 import { requestContext } from "./utils/requestContext.js";
 import crypto from "crypto";
 import { attachDbLogger } from "./Middleware/dbLoggerMiddleware.js";
+import swaggerUi from "swagger-ui-express";
+import { swaggerDocument } from "./swagger.js";
 
-
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+// Trust reverse proxy (Cloudflare, AWS ALB, Nginx, Render, etc.) for rate limiting and IP tracking
+app.set("trust proxy", 1);
 
-// Logging utils use
+// Security headers (keep CSP disabled for swagger-ui assets)
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors());
+
+// 1️⃣ Initialize Request Context FIRST for every single hit
 app.use((req, res, next) => {
   const txnId = req.headers["x-transaction-id"] || crypto.randomUUID();
-  const apiName = req.originalUrl;
+  const apiName = req.originalUrl || req.url;
   requestContext.run({ txnId, apiName }, () => next());
 });
 
+// 2️⃣ Attach DB logging proxy
 app.use(attachDbLogger);
+
+// 3️⃣ Body parsing with safe JSON syntax error handling
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
+    const txnId = requestContext.getTxnId();
+    logger.warn(`Malformed JSON in request body [${txnId}] - ${err.message}`, {
+      metadata: {
+        apiName: req.originalUrl || req.url,
+        method: req.method,
+        statusCode: 400,
+        txnId,
+        error: err.message,
+      },
+    });
+    return res.status(400).json({ error: "Invalid JSON format in request body", txnId });
+  }
+  next(err);
+});
+
+// 4️⃣ Mount HTTP Logger (captures incoming hit immediately + outgoing on finish)
 app.use(httpLogger);
+
+// 5️⃣ Rate limiters (placed AFTER httpLogger so 429 rate-limited hits are logged with txnId)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts. Please try again after 15 minutes." },
+});
+
+app.use("/api/admins/login", authLimiter);
+app.use("/api/employees/login", authLimiter);
+app.use("/api/admins/reset-password-phone", authLimiter);
+app.use("/api/employees/reset-password", authLimiter);
+
+// Swagger Documentation UI
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.get("/", (req, res) => {
   const responsePayload = {
     version: "1.0.1",
-    message: "Welcome to the WorkPay API"
-  }
+    message: "Welcome to the WorkPay API",
+    docs: "/api-docs",
+  };
   res.send(responsePayload);
-})
+});
 
 app.use("/api/admins", adminRoutes);
 app.use("/api/offices", officeRoutes);
@@ -48,9 +97,30 @@ app.use("/api/leaves", leaveRoutes);
 app.use("/api/transactions", transactionRouter);
 app.use("/api/holidays", holidayRoutes);
 
+// 6️⃣ 404 handler for undefined endpoints
+app.use((req, res) => {
+  const txnId = requestContext.getTxnId();
+  res.status(404).json({
+    error: "Route Not Found",
+    method: req.method,
+    path: req.originalUrl,
+    txnId,
+  });
+});
+
+// 7️⃣ Global 500 error handler
 app.use((err, req, res, next) => {
   const txnId = requestContext.getTxnId();
-  logger.error(`${req.method} ${req.url} [${txnId}] - ${err.message}`, { stack: err.stack });
+  logger.error(`${req.method} ${req.originalUrl || req.url} [${txnId}] - ${err.message}`, {
+    metadata: {
+      apiName: req.originalUrl || req.url,
+      method: req.method,
+      statusCode: 500,
+      txnId,
+      error: err.message,
+    },
+    stack: err.stack,
+  });
   res.status(500).json({ error: "Internal Server Error", txnId });
 });
 

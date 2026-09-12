@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -69,6 +69,8 @@ model Holiday {
   id          Int      @id @default(autoincrement())
   description String
   date        DateTime
+
+  @@index([date])
 }
 
 model Employee {
@@ -91,6 +93,9 @@ model Employee {
   leaves        Leave[]
   attendances   Attendance[]
   transactions  Transaction[]
+
+  @@index([officeId, status])
+  @@index([adminId])
 }
 
 model Leave {
@@ -104,6 +109,10 @@ model Leave {
   type      LeaveType
   status    LeaveStatus @default(PENDING)
   employee  Employee    @relation(fields: [empId], references: [id])
+
+  @@index([empId, fromDate, toDate])
+  @@index([empId, status])
+  @@index([status])
 }
 
 model Attendance {
@@ -115,6 +124,10 @@ model Attendance {
   overTime     Int
   status       attendanceStatus
   employee     Employee         @relation(fields: [empId], references: [id])
+
+  @@index([empId, date])
+  @@index([date, status])
+  @@index([empId])
 }
 
 model Transaction {
@@ -125,4 +138,7 @@ model Transaction {
   payType     PayType
   description String?
   employee    Employee @relation(fields: [empId], references: [id])
+
+  @@index([empId, date])
+  @@index([date])
 }

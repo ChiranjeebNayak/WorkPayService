@@ -4,9 +4,9 @@ import {adminAuth} from "../Middleware/authMiddleware.js"
 
 const router = express.Router();
 
-router.post("/create", createOffice);
-router.get("/",adminAuth, getOffices);
-router.put("/update/:id",adminAuth ,updateOffice);
+router.post("/create", adminAuth, createOffice);
+router.get("/", adminAuth, getOffices);
+router.put("/update/:id", adminAuth, updateOffice);
 router.delete("/delete/:id",adminAuth ,deleteOffice);
 
 

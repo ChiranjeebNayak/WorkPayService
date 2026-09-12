@@ -16,7 +16,8 @@ export const adminAuth = async (req, res, next) => {
     }
 
     // 🔎 Check if admin exists in DB
-    const admin = await prisma.admin.findUnique({ where: { id: decoded.id } });
+    const db = req.db || prisma;
+    const admin = await db.admin.findUnique({ where: { id: decoded.id } });
     if (!admin) {
       return res.status(401).json({ error: "Admin not found" });
     }
@@ -50,7 +51,8 @@ export const employeeAuth = async (req, res, next) => {
     }
 
     // 🔎 Check if employee exists in DB
-    const employee = await prisma.employee.findUnique({ where: { id: decoded.id } });
+    const db = req.db || prisma;
+    const employee = await db.employee.findUnique({ where: { id: decoded.id } });
     if (!employee) {
       return res.status(401).json({ error: "Employee not found" });
     }
@@ -79,11 +81,12 @@ export const adminOrEmployeeAuth = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     let user = null;
+    const db = req.db || prisma;
 
     if (decoded.role === "admin") {
-      user = await prisma.admin.findUnique({ where: { id: decoded.id } });
+      user = await db.admin.findUnique({ where: { id: decoded.id } });
     } else if (decoded.role === "employee") {
-      user = await prisma.employee.findUnique({ where: { id: decoded.id } });
+      user = await db.employee.findUnique({ where: { id: decoded.id } });
     }
 
     if (!user) {

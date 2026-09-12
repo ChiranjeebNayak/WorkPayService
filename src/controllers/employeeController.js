@@ -4,12 +4,23 @@ import moment from "moment-timezone";
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
-// ✅ Employee Login
+// ✅ Employee Login (supports phone or email)
 export const loginEmployee = async (req, res) => {
   try {
-    const { phone, password } = req.body;
+    const { phone, email, password } = req.body;
 
-    const employee = await req.db.employee.findUnique({ where: { phone } });
+    if ((!phone && !email) || !password) {
+      return res.status(400).json({ error: "Phone or email, and password are required" });
+    }
+
+    const employee = await req.db.employee.findFirst({
+      where: {
+        OR: [
+          phone ? { phone } : undefined,
+          email ? { email } : undefined,
+        ].filter(Boolean),
+      },
+    });
     if (!employee) return res.status(404).json({ error: "Employee not found" });
 
     if (employee.status !== "ACTIVE") {
@@ -25,7 +36,7 @@ export const loginEmployee = async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    res.json({ message: `Employee login successful `, token });
+    res.json({ message: "Employee login successful", token });
   } catch (error) {
     res.status(500).json({ error: "Failed to login employee", details: error.message });
   }
@@ -160,10 +171,27 @@ export const createEmployee = async (req, res) => {
   }
 };
 
-// ✅ Get all employees
+// ✅ Get all employees (excludes password hash)
 export const getEmployees = async (req, res) => {
   try {
     const employees = await req.db.employee.findMany({
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        joinedDate: true,
+        baseSalary: true,
+        overtimeRate: true,
+        leaveBalance: true,
+        status: true,
+        officeId: true,
+        adminId: true,
+        accountNumber: true,
+        ifscCode: true,
+        office: true,
+      },
+      orderBy: { id: "asc" },
     });
     res.json(employees);
   } catch (error) {
@@ -467,10 +495,9 @@ export const updateBankDetails = async (req, res) => {
       ifscCode:updatedEmployee.ifscCode
     } });
   } catch (error) {
-    console.error("Error updating employee:", error);
-   res.status(500).json({ 
-      error: "Failed to create employee", 
-      // This check prevents the "Symbol to string" crash
+    console.error("Error updating bank details:", error);
+    res.status(500).json({ 
+      error: "Failed to update bank details", 
       details: error instanceof Error ? error.message : "Internal Server Error" 
     });
   }

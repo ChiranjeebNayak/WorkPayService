@@ -7,27 +7,39 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "seed": "node src/seed.js"
+    "seed": "node src/seed.js",
+    "postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@prisma/client": "^6.17.1",
+    "@prisma/client": "^6.19.3",
     "async-hooks-context": "^4.0.1",
     "bcrypt": "^6.0.0",
     "chalk": "^5.6.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.7.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "moment-timezone": "^0.6.0",
     "morgan": "^1.10.1",
+    "swagger-ui-express": "^5.0.1",
     "winston": "^3.18.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.10",
-    "prisma": "^6.17.1"
+    "prisma": "^6.19.3"
+  },
+  "allowScripts": {
+    "@prisma/client@6.17.1": true,
+    "@prisma/engines@6.17.1": true,
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "bcrypt@6.0.0": true,
+    "prisma@6.17.1": true,
+    "prisma@6.19.3": true
   }
 }

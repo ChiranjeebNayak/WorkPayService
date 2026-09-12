@@ -111,10 +111,6 @@ export const addHoliday = async (req, res) => {
       select: { id: true }
     });
 
-    if (employees.length === 0) {
-      return res.status(400).json({ error: "No employees found to create holiday attendance" });
-    }
-
     // Check if any attendance records already exist for this date
     const existingAttendance = await req.db.attendance.findMany({
       where: {
@@ -139,21 +135,25 @@ export const addHoliday = async (req, res) => {
         },
       });
 
-      // Create attendance records for all employees with status "HOLIDAY"
-      const attendanceRecords = await tx.attendance.createMany({
-        data: employees.map(employee => ({
-          empId: employee.id,
-          date: holidayDateUTC, // Same UTC date as holiday
-          checkInTime: null, // No check-in for holidays
-          checkOutTime: null, // No check-out for holidays
-          overTime: 0, // No overtime for holidays
-          status: "HOLIDAY" // Status as HOLIDAY
-        }))
-      });
+      let attendanceCount = 0;
+      if (employees.length > 0) {
+        // Create attendance records for all employees with status "HOLIDAY"
+        const attendanceRecords = await tx.attendance.createMany({
+          data: employees.map(employee => ({
+            empId: employee.id,
+            date: holidayDateUTC, // Same UTC date as holiday
+            checkInTime: null, // No check-in for holidays
+            checkOutTime: null, // No check-out for holidays
+            overTime: 0, // No overtime for holidays
+            status: "HOLIDAY" // Status as HOLIDAY
+          }))
+        });
+        attendanceCount = attendanceRecords.count;
+      }
 
       return { 
         holiday, 
-        attendanceCount: attendanceRecords.count 
+        attendanceCount 
       };
     });
 
@@ -171,7 +171,7 @@ export const addHoliday = async (req, res) => {
     });
   } catch (error) {
     console.error("Error adding holiday:", error);
-    res.status(500).json({ error: "Failed to add holiday", details: error.message });
+    res.status(500).json({ error: "Failed to add holiday" });
   }
 };
 

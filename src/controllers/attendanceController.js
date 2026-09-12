@@ -30,8 +30,8 @@ const getTodayOfficeTimeUTC = (storedOfficeTime) => {
 
 
 // Check if employee has approved leave for a specific date
-const hasApprovedLeaveForDate = async (empId, targetDateUTC) => {
-  const leave = await req.db.leave.findFirst({
+const hasApprovedLeaveForDate = async (db, empId, targetDateUTC) => {
+  const leave = await db.leave.findFirst({
     where: {
       empId: empId,
       status: "APPROVED",
@@ -699,12 +699,12 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
     const processedEmployees = [];
     
     // Use a transaction to ensure data consistency
-    const result = await req.db.$transaction(async (prisma) => {
+    const result = await req.db.$transaction(async (tx) => {
       const batchResults = [];
       
       for (const employee of employeesWithoutAttendance) {
         // Double-check this employee doesn't have a record (race condition protection)
-        const existingRecord = await req.db.attendance.findFirst({
+        const existingRecord = await tx.attendance.findFirst({
           where: {
             empId: employee.id,
             date: { gte: todayStartUTC, lt: todayEndUTC }
@@ -720,7 +720,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
         let reason = "No check-in recorded";
 
         // Check if employee has approved leave for this date
-        const hasLeave = await hasApprovedLeaveForDate(employee.id, targetDateUTC);
+        const hasLeave = await hasApprovedLeaveForDate(tx, employee.id, targetDateUTC);
         
         if (hasLeave) {
           status = "LEAVE";
@@ -731,7 +731,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
 
         try {
           // Create attendance record
-          const attendanceRecord = await req.db.attendance.create({
+          const attendanceRecord = await tx.attendance.create({
             data: {
               empId: employee.id,
               date: todayStartUTC,
@@ -745,7 +745,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
           // Create deduction transaction for ABSENT status
           if (status === "ABSENT") {
             // Get employee's base salary
-            employeeData = await req.db.employee.findUnique({
+            employeeData = await tx.employee.findUnique({
               where: { id: employee.id },
               select: { baseSalary: true, name: true }
             });
@@ -759,7 +759,7 @@ export const markAttendanceForAbsentEmployees = async (req, res) => {
               const perDayAmount = Math.round(employeeData.baseSalary / totalDaysInMonth);
               
               // Create deduction transaction
-              await req.db.transaction.create({
+              await tx.transaction.create({
                 data: {
                   empId: employee.id,
                   amount: perDayAmount,
@@ -1084,7 +1084,7 @@ export const getEmployeesByAttendanceStatus = async (req, res) => {
     // 3. Get attendance records for today with the specified status
     const attendanceRecords = await req.db.attendance.findMany({
       where: {
-        status: isAllOffices ? attendanceStatus === "ABSENT" ? {in:["ABSENT"]} :  { in: ["PRESENT", "LATE"] } : attendanceStatus,
+        status: attendanceStatus,
         empId: { in: employeeIds },
         date: {
           gte: todayStartUTC,
